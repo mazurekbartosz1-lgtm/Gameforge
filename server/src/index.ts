@@ -1,7 +1,11 @@
 import { Server } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
+import { Encoder } from "@colyseus/schema";
 import { GameRoom } from "./GameRoom.js";
 import type { Request, Response, NextFunction } from "express";
+
+// 200 ResourceNodes exceed default 8KB schema buffer — increase to 64KB
+Encoder.BUFFER_SIZE = 64 * 1024;
 
 const PORT = Number(process.env.PORT ?? 2567);
 

@@ -266,25 +266,25 @@ export class PlayScene extends Scene {
   // ── Resources ─────────────────────────────────────────────────────────────
 
   private createResourceTextures() {
-    // Tree: green canopy + brown trunk
-    const tg = this.add.graphics();
-    tg.fillStyle(0x5a4a2a);
-    tg.fillRect(12, 24, 8, 8);
-    tg.fillStyle(0x1a5c1a);
-    tg.fillCircle(16, 14, 14);
-    tg.fillStyle(0x2e8b2e);
-    tg.fillCircle(12, 10, 8);
-    tg.generateTexture("res_tree", 32, 32);
-    tg.destroy();
+    // Tree: brown trunk + dark green canopy (Canvas 2D API — reliable in all renderers)
+    const treeTex = this.textures.createCanvas("res_tree", 32, 32)!;
+    const tc = treeTex.getContext();
+    tc.fillStyle = "#5a4a2a";
+    tc.fillRect(12, 24, 8, 8);
+    tc.fillStyle = "#1a5c1a";
+    tc.beginPath(); tc.arc(16, 14, 14, 0, Math.PI * 2); tc.fill();
+    tc.fillStyle = "#2e8b2e";
+    tc.beginPath(); tc.arc(11, 9, 8, 0, Math.PI * 2); tc.fill();
+    treeTex.refresh();
 
-    // Rock: gray ellipse with highlight
-    const rg = this.add.graphics();
-    rg.fillStyle(0x808080);
-    rg.fillEllipse(16, 18, 28, 20);
-    rg.fillStyle(0xb0b0b0);
-    rg.fillEllipse(11, 13, 12, 8);
-    rg.generateTexture("res_rock", 32, 32);
-    rg.destroy();
+    // Rock: gray with lighter highlight
+    const rockTex = this.textures.createCanvas("res_rock", 32, 32)!;
+    const rc = rockTex.getContext();
+    rc.fillStyle = "#808080";
+    rc.beginPath(); rc.ellipse(16, 18, 13, 9, 0, 0, Math.PI * 2); rc.fill();
+    rc.fillStyle = "#b0b0b0";
+    rc.beginPath(); rc.ellipse(11, 13, 6, 4, 0, 0, Math.PI * 2); rc.fill();
+    rockTex.refresh();
   }
 
   private addResourceSprite(n: ResourceNodeData) {
