@@ -267,7 +267,7 @@ export class PlayScene extends Scene {
         if (dx * dx + dy * dy <= VISION_RADIUS * VISION_RADIUS) continue; // visible
 
         const disc = this.discovered.has(`${tx},${ty}`);
-        this.fogGraphics.fillStyle(0x000000, disc ? 0.6 : 0.95);
+        this.fogGraphics.fillStyle(0x000000, disc ? 0.6 : 0.70);
         this.fogGraphics.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
       }
     }
@@ -378,13 +378,29 @@ export class PlayScene extends Scene {
     this.drawForest();
     this.drawFog(tileX, tileY);
 
-    // Remote player interpolation
+    // Remote player interpolation + visibility (hidden by fog outside vision)
+    const visionPx = VISION_RADIUS * TILE_SIZE;
     this.remotePlayers.forEach((remote) => {
       remote.x = Phaser.Math.Linear(remote.x, remote.targetX, 0.2);
       remote.y = Phaser.Math.Linear(remote.y, remote.targetY, 0.2);
       remote.sprites.forEach((s) => { s.x = remote.x; s.y = remote.y; });
       remote.label.x = remote.x;
       remote.label.y = remote.y - 52;
+
+      const dx = remote.x - this.px;
+      const dy = remote.y - this.py;
+      const inVision = dx * dx + dy * dy <= visionPx * visionPx;
+      if (inVision) {
+        // Restore correct sprite visibility based on current animation
+        const { texture, flipX } = ANIM_MAP[remote.currentAnim] ?? ANIM_MAP["idle_down"];
+        remote.sprites.forEach((s, key) => {
+          s.setVisible(key === texture);
+          if (key === texture) s.setFlipX(flipX);
+        });
+      } else {
+        remote.sprites.forEach((s) => s.setVisible(false));
+      }
+      remote.label.setVisible(inVision);
     });
 
     // Colyseus send (throttled)

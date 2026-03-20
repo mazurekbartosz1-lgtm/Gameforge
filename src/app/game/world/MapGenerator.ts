@@ -5,9 +5,9 @@ export const TILE_SIZE  = 16; // px per tile
 export const CHUNK_SIZE = 16; // tiles per chunk side (used for future chunk management)
 
 const SPAWN_CLEAR_RADIUS = 22; // tiles around (0,0) guaranteed to be open
-const SMOOTH_RADIUS = 3;        // neighborhood radius for blob-like forest shapes
-const SMOOTH_CELLS = (2 * SMOOTH_RADIUS + 1) ** 2; // 49
-const FOREST_THRESHOLD = 0.63;  // ~30% of world is forest
+const SMOOTH_RADIUS = 10;       // neighborhood radius for blob-like forest shapes
+const SMOOTH_CELLS = (2 * SMOOTH_RADIUS + 1) ** 2; // 441
+const FOREST_THRESHOLD = 0.522; // ~56% of world is forest, large clusters
 
 /** Deterministic hash of a world tile position */
 function terrainHash(wx: number, wy: number, seed: number): number {

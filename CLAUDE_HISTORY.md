@@ -399,6 +399,47 @@ Paste `SESSION_START_PROMPT.md` first, then use the Wieczór 6 prompt from `PLAN
 
 ---
 
+## Session 14 — 2026-03-20 (Session 3, continued)
+
+### What was done
+- Rewrote `MapGenerator.ts` for infinite procedural world (no fixed width/height):
+  - Hash-based terrain: `terrainHash(wx, wy, seed)` — pure function, deterministic
+  - Neighbourhood smoothing (`SMOOTH_RADIUS=10`, 441 neighbours) → organic blob-shaped forests
+  - `isForestTile(wx, wy, seed)` — returns boolean, consistent for any coordinate + seed
+  - `SPAWN_CLEAR_RADIUS=22` — tiles around (0,0) always open
+  - Final `FOREST_THRESHOLD=0.522` → ~56% world is forest, large clusters
+- Updated `PlayScene.ts` for infinite world:
+  - `TileSprite` for grass background (GPU-tiled, 1 draw call, synced with camera scroll)
+  - `forestGfx: Graphics` at depth 1 — redrawn per-frame for camera-visible tiles only using `isForestTile()`
+  - `fogGraphics: Graphics` at depth 8 — per-frame redraw, camera-visible tiles only
+  - `discovered: Set<string>` with `"tx,ty"` keys — infinite coordinate support
+  - `VISION_RADIUS=10` tiles, `MAX_WORLD_PX=100_000`
+  - `followTarget: Rectangle` — invisible object for `cameras.main.startFollow()`
+  - Remote players: visible only when within vision radius (sprites hidden + label hidden outside)
+- Tuned forest density iteratively from 30% → 80% → 50% → final 56%
+
+### Decisions made
+- Infinite world via hash function beats pre-generated array (zero memory overhead, works at any coords)
+- `TileSprite.setTilePosition(scrollX, scrollY)` for GPU-tiled grass — 1 draw call regardless of world size
+- `Set<string>` fog tracking instead of `boolean[][]` — no fixed size needed
+- `startFollow(followTarget)` + initial `centerOn()` — reliable camera tracking (not `centerOn()` in update)
+- Only camera-visible tiles processed per frame (~2000 tiles × 441 hash ops = ~882K ops/frame, negligible)
+- Remote players hidden in explored-but-not-visible areas (consistent with fog of war design)
+
+### Problems encountered
+- `centerOn()` in update() was unreliable — player appeared at bottom-right corner. Fix: `startFollow()` with invisible Rectangle
+- Remote player characters were invisible even inside vision (sprites not restored when entering vision). Fix: explicit sprite+flipX set when `inVision`
+- Forest tile 28 looked identical to grass — replaced with dark Graphics overlay (0x0d2b0d, 78% alpha)
+
+### Next step
+**Wieczór 14** — Resource nodes (trees, rocks) rendered as sprites on map with interaction.
+- Server generates ResourceNode positions from mapSeed (procedurally, server-side)
+- Client receives nodes via WorldState and renders tree/rock sprites from Pixel Crawler assets
+- E key near resource → collect animation + server action handler reducing ResourceNode HP
+- Depleted nodes respawn after 60s
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,
