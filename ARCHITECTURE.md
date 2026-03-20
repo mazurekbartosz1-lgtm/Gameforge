@@ -8,6 +8,14 @@ new decisions, installed packages, or structural changes made during the session
 ## Last updated
 2026-03-20
 
+## Completed milestones
+- ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
+- ✅ Wieczór 2: Next.js + Pixel Crawler assets in `public/assets/`
+- ✅ Wieczór 3: Colyseus deployed on Railway (`gameforge-production-d7c8.up.railway.app`)
+- ✅ Wieczór 4: Phaser 3.90.0 installed, first sprite displayed in browser
+- ✅ Wieczór 5: WorldState schema complete (all 6 schemas in `server/src/GameRoom.ts`)
+- ⏳ Wieczór 6: Body_A player character animations — NEXT
+
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
 - **Railway internal port:** 8080 (domain mapped to port 8080 in Railway Networking settings)
@@ -48,6 +56,7 @@ Gameforge/
 | Framework | Next.js (App Router) |
 | Language | TypeScript |
 | Styling | Tailwind CSS |
+| Game engine | Phaser 3.90.0 (ESM named imports, client-side only via `dynamic ssr:false`) |
 | Runtime | Node.js ≥20 |
 
 ### Game server
@@ -82,6 +91,10 @@ Gameforge/
 
 ## Key decisions
 - **Assets in `public/`** — moved from `src/app/assets/` so Next.js serves them as static files
+- **Phaser ESM imports** — Phaser 3.90 ESM build has no default export; use named imports: `import { Scene, Game, AUTO } from "phaser"`
+- **Phaser + Next.js 16** — `ssr: false` must be in a Client Component (`GameLoader.tsx`); `PhaserGame.tsx` initializes `Phaser.Game` async in `useEffect`
+- **Asset paths** — spaces in Pixel Crawler folder names cause 404 in some cases; copy assets to flat paths (e.g. `public/assets/test/`) for reliable serving
+- **Fairy Forest frame 15** — solid grass tile, used as base map tile
 - **ESM server** — `"type": "module"` in server/package.json; tsconfig uses `module: NodeNext` / `moduleResolution: NodeNext`; local imports require `.js` extensions
 - **ESM migration reason** — Colyseus 0.17 depends on `@colyseus/better-call` → `rou3` which is ESM-only; `ERR_REQUIRE_ESM` crash on Railway with CommonJS
 - **`onLeave` signature** — Colyseus 0.17 uses `(client, code?: number)`, not `(client, consented: boolean)`

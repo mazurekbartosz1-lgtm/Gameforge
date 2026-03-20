@@ -167,6 +167,30 @@ Prompt is in PLAN.md under "Wieczór 6".
 
 ---
 
+## Session 7 — END OF SESSION 1 — 2026-03-20
+
+### Summary of Wieczory 1–5 completed this session
+
+- ✅ **Wieczór 1** — Accounts setup: Clerk, Supabase, Resend, Railway
+- ✅ **Wieczór 2** — Next.js project structure + 357 Pixel Crawler PNGs in `public/assets/`, `ASSETS_MAP.md` generated
+- ✅ **Wieczór 3** — Colyseus game server deployed on Railway at `gameforge-production-d7c8.up.railway.app` (port 8080)
+- ✅ **Wieczór 4** — Phaser 3.90.0 installed in root `package.json`, first Pixel Crawler sprite (Fairy Forest frame 15) displayed in browser at `/game`
+- ✅ **Wieczór 5** — WorldState Schema complete: PlayerState, ResourceNode, FoodNode, EnemyState, BuildingState, CookingPotState all defined in `server/src/GameRoom.ts`
+
+### Issues resolved this session
+- ESM/CommonJS conflict in Colyseus — converted server to `"type": "module"`, `module: NodeNext`
+- Railway port mapping — Root Directory set to `server/`, internal port 8080 mapped in Networking
+- Vercel build failure — excluded `server/` from Next.js `tsconfig.json` + replaced webpack config with `turbopack: {}`
+- Phaser default export missing in ESM — switched to named imports
+- Next.js 16 `ssr: false` in Server Component error — added `GameLoader.tsx` Client Component wrapper
+- Phaser `textures.list` toJSON crash — replaced with `Object.keys(this.textures.list)`
+
+### Next session starts with
+**Wieczór 6** — Body_A player character animations in 4 directions (idle + walk).
+Paste `SESSION_START_PROMPT.md` first, then use the Wieczór 6 prompt from `PLAN.md`.
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,
