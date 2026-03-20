@@ -81,7 +81,7 @@ EnemyState, BuildingState, CookingPotState, WorldState with MapSchema collection
 
 ## TYDZIEŃ 2 — Player character
 
-### [ ] Wieczór 6: Player spritesheet Body_A — animations in 4 directions
+### [x] Wieczór 6: Player spritesheet Body_A — animations in 4 directions
 
 ```
 In the Phaser scene at src/app/game/scenes/BootScene.ts (or a new PlayScene.ts),

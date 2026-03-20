@@ -12,7 +12,7 @@ export default function PhaserGame() {
     initialized.current = true;
 
     (async () => {
-      const { Game, AUTO } = await import("phaser");
+      const { Game, AUTO, Scale } = await import("phaser");
       const { GameScene } = await import("./GameScene");
 
       gameRef.current = new Game({
@@ -21,7 +21,12 @@ export default function PhaserGame() {
         height: 600,
         parent: "game-container",
         backgroundColor: "#2d6a2d",
+        pixelArt: true,
         audio: { noAudio: true },
+        scale: {
+          mode: Scale.FIT,
+          autoCenter: Scale.CENTER_BOTH,
+        },
         scene: [GameScene],
       });
     })();

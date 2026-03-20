@@ -191,6 +191,72 @@ Paste `SESSION_START_PROMPT.md` first, then use the Wieczór 6 prompt from `PLAN
 
 ---
 
+---
+
+## Session 8 — 2026-03-20 (Session 2)
+
+### What was done
+- Discovered PLAN.md's Body_A description was incorrect — no single `Body_A.png` exists; the Free Pack uses **separate sheets per animation** (Idle_Down-Sheet.png, Walk_Down-Sheet.png, etc.)
+- Copied 6 animation sheets to `public/assets/player/` (flat paths, no spaces): idle_down, idle_up, idle_side, walk_down, walk_up, walk_side
+- Created `src/app/game/animations/playerAnimations.ts` — `createPlayerAnimations(scene)` registers all 8 Phaser animations
+- Updated `src/app/game/GameScene.ts` — loads 6 spritesheets, creates player sprite at center (scale ×4), cycles through all 8 animations every 1 second with a label
+- TypeScript compiles cleanly (no errors)
+- **Wieczór 6 COMPLETE ✅**
+
+### Decisions made
+- Idle sheets (256×64) have 16 cols × 4 rows; row 0 = 16 animation frames at 8fps
+- Walk sheets (384×64) have 24 cols × 4 rows; row 0 = 24 animation frames at 8fps
+- `idle_right` / `walk_right` reuse the side-facing sheet — caller sets `setFlipX(true)`
+- The 4 rows in each sheet are body-layer variants (for compositing multiple character pieces); row 0 is the base layer sufficient for Body_A
+
+### Problems encountered
+- PLAN.md assumed a monolithic `Body_A.png` with all directions in rows — this file doesn't exist; each direction/action is a separate sheet
+
+### Next step
+**Wieczór 7** — Player movement synchronized via Colyseus.
+- Install `colyseus.js` client SDK
+- Create `src/app/game/network/ColyseusClient.ts` singleton connection
+- Implement WASD + arrow key movement in PlayScene.ts
+- Send `move` messages to server every 50ms
+- Prompt is in PLAN.md under "Wieczór 7"
+
+---
+
+---
+
+## Session 9 — 2026-03-20 (Session 2, continued)
+
+### What was done
+- Debugged Wieczór 6 animation issues across multiple iterations
+- Root cause found: ASSETS_MAP.md had **wrong frame size** — claimed 16×16 but actual Body_A frame is **64×64** (verified by user opening the PNG)
+- Idle sheets 256×64 → 4 frames (0–3); Walk sheets 384×64 → 6 frames (0–5)
+- Fixed `playerAnimations.ts` to use correct frame ranges
+- Fixed `GameScene.ts` to cycle all 8 animations using 6 sprites (one per texture) with `setVisible` toggle — reliable alternative to Phaser cross-texture `play()`
+- Fixed canvas scaling: `Scale.FIT + CENTER_BOTH + pixelArt:true` in PhaserGame.tsx, game world 800×600
+- Added `overflow:hidden` to body via globals.css to remove browser scrollbar gap
+- **Wieczór 6 COMPLETE ✅** (for real this time)
+
+### Decisions made
+- Body_A actual frame size: 64×64 (not 16×16 as ASSETS_MAP claimed)
+- Multi-texture animation: use separate sprite per texture + `setVisible` toggle; Phaser `setTexture()+play()` is unreliable across different spritesheet keys
+- Scale ×3 for Body_A (64×3=192px) is a good visible size for the demo
+- `Scale.FIT + CENTER_BOTH` is the correct Phaser approach for full-screen canvas
+
+### Problems encountered
+- ASSETS_MAP.md frame size metadata was incorrect — led to multiple failed attempts with 16×16 and 16×32 frame sizes
+- Orc sprites tried as fallback but had their own cross-texture animation issues
+- `Scale.RESIZE` returned fractional heights (729.6); `window.innerWidth` gave positioning drift; `Scale.FIT` with 800×600 is the reliable solution
+
+### Next step
+**Wieczór 7** — Player movement synchronized via Colyseus.
+- Install `colyseus.js` client SDK
+- Create `src/app/game/network/ColyseusClient.ts` singleton
+- WASD + arrow key movement in PlayScene
+- Send `move` messages to server every 50ms
+- Prompt is in PLAN.md under "Wieczór 7"
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,
