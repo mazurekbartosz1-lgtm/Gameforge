@@ -8,6 +8,7 @@ import {
   ACTION_DIRS,
   type ActionType,
 } from "../animations/toolAnimations";
+import { generateMap, MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, type GeneratedMap } from "../world/MapGenerator";
 import { getRoom } from "../network/ColyseusClient";
 
 type Direction = "down" | "up" | "left" | "right";
@@ -59,11 +60,12 @@ export class PlayScene extends Scene {
   private isActionPlaying = false;
   private playersOnlineText!: Phaser.GameObjects.Text;
   private sessionIdText!: Phaser.GameObjects.Text;
-  private playerCount = 1; // local player always counts
+  private playerCount = 1;
+  private generatedMap: GeneratedMap | null = null;
 
-  // All sprites share this position
-  private px = 400;
-  private py = 300;
+  // Player world position (starts at map center)
+  private px = MAP_WIDTH / 2 * TILE_SIZE;
+  private py = MAP_HEIGHT / 2 * TILE_SIZE;
 
   constructor() {
     super({ key: "PlayScene" });
@@ -74,10 +76,8 @@ export class PlayScene extends Scene {
       console.error("Load error:", file.src);
     });
 
-    this.load.spritesheet("fairy_tiles", "/assets/test/tiles.png", {
-      frameWidth: 16,
-      frameHeight: 16,
-    });
+    // Load as plain image for tilemap (not spritesheet)
+    this.load.image("fairy_tiles", "/assets/test/tiles.png");
 
     const cfg = { frameWidth: 64, frameHeight: 64 };
     this.load.spritesheet("idle_down",  "/assets/player/idle_down.png",  cfg);
@@ -91,8 +91,20 @@ export class PlayScene extends Scene {
   }
 
   create() {
-    // Background
-    this.add.tileSprite(0, 0, 800, 600, "fairy_tiles", 15).setOrigin(0, 0);
+    // Procedural map — seed from server (same for all players in room)
+    const seed = (this.room as any)?.state?.mapSeed ?? (getRoom() as any)?.state?.mapSeed ?? 42;
+    this.generatedMap = generateMap(seed);
+
+    const map = this.make.tilemap({
+      data: this.generatedMap.groundData,
+      tileWidth: TILE_SIZE,
+      tileHeight: TILE_SIZE,
+    });
+    const tileset = map.addTilesetImage("fairy_tiles", "fairy_tiles", TILE_SIZE, TILE_SIZE, 0, 0);
+    map.createLayer(0, tileset!, 0, 0);
+
+    // Camera bounds = full map
+    this.cameras.main.setBounds(0, 0, MAP_WIDTH * TILE_SIZE, MAP_HEIGHT * TILE_SIZE);
 
     // Animations
     createPlayerAnimations(this);
@@ -286,13 +298,27 @@ export class PlayScene extends Scene {
       ? `walk_${this.direction}`
       : `idle_${this.direction}`;
 
-    // Move all sprites together
+    // Move — check collision against tile grid
     if (moving) {
-      this.px += vx * dt;
-      this.py += vy * dt;
+      const newPx = this.px + vx * dt;
+      const newPy = this.py + vy * dt;
+      const col = this.generatedMap?.collisionMap;
+
+      const tileX = Math.floor(newPx / TILE_SIZE);
+      const tileY = Math.floor(newPy / TILE_SIZE);
+      const blocked = col ? (col[tileY]?.[tileX] ?? true) : false;
+
+      if (!blocked) {
+        this.px = newPx;
+        this.py = newPy;
+      }
+
       this.sprites.forEach((s) => { s.x = this.px; s.y = this.py; });
       this.toolSprites.forEach((s) => { s.x = this.px; s.y = this.py; });
     }
+
+    // Camera follows local player
+    this.cameras.main.centerOn(this.px, this.py);
 
     // Switch animation if changed
     if (animKey !== this.currentAnim) {

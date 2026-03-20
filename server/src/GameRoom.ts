@@ -87,6 +87,7 @@ export class WorldState extends Schema {
   @type({ map: CookingPotState }) cookingPots = new MapSchema<CookingPotState>();
   @type("float64") worldTime: number = 0; // 0–1 day cycle
   @type("boolean") isNight: boolean = false;
+  @type("uint32") mapSeed: number = 0;    // procedural map seed — same for all players in room
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -103,7 +104,9 @@ export class GameRoom extends Room<GameRoomOptions> {
   maxClients = 16;
 
   onCreate(_options: any) {
-    this.setState(new WorldState());
+    const state = new WorldState();
+    state.mapSeed = Math.floor(Math.random() * 2_147_483_647); // random uint31
+    this.setState(state);
     this.setSimulationInterval(() => this.tick(), TICK_RATE);
     this.registerMessageHandlers();
     console.log(`[GameRoom] created – roomId: ${this.roomId}`);

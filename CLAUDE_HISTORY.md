@@ -327,6 +327,45 @@ Paste `SESSION_START_PROMPT.md` first, then use the Wieczór 6 prompt from `PLAN
 
 ---
 
+## Session 12 — 2026-03-20 (Session 3, continued)
+
+### What was done
+- Replaced Tiled-based map plan (Wieczory 11–12) with procedural generation
+- Created `src/app/game/world/MapGenerator.ts`:
+  - mulberry32 seeded PRNG — deterministic, same seed = same map
+  - `generateMap(seed)` → 80×80 tiles, Tiles.png indices, grass variants (14/15/16)
+  - Forest patches: 18 random circular clusters, tile 28 (forest floor), solid collision
+  - Perimeter always solid; center 14-tile radius kept clear for spawn
+  - Exports: `MAP_WIDTH=80`, `MAP_HEIGHT=80`, `TILE_SIZE=16`
+- Added `@type("uint32") mapSeed` to `WorldState` in `GameRoom.ts`
+- `GameRoom.onCreate()` generates random seed per room — all players in same room get same map
+- Updated `PlayScene.ts`:
+  - `preload()`: loads `fairy_tiles` as plain image (not spritesheet) for tilemap
+  - `create()`: reads `room.state.mapSeed`, calls `generateMap()`, creates Phaser tilemap
+  - Camera bounded to 80×80 tile world, follows player via `centerOn(px, py)` in update
+  - Player movement checks collision against `collisionMap` array before applying
+  - Player initial position: map center (640, 640)
+- **Wieczór 11 + 12 COMPLETE ✅** (merged into one — no Tiled needed)
+
+### Decisions made
+- Procedural generation beats Tiled for a multiplayer game: each room gets a unique world
+- Seed stored in WorldState so late-joining clients get the same map as existing players
+- Collision is manual (not Phaser physics) — check tile in collisionMap before moving
+- `centerOn()` in update() is simpler than `startFollow()` which requires a Game Object
+- Tile 28 used for forest floor (row 2 col 2, same column as grass tile 15) — visually distinct
+
+### Problems encountered
+- None
+
+### Next step
+**Wieczór 13** — Resource nodes (trees, rocks) visible on map.
+- Spawn ResourceNode objects at Spawns layer positions (or procedurally from seed)
+- Render tree/rock sprites from Pixel Crawler assets
+- Handle player interaction (E key near resource)
+- Prompt is in PLAN.md under "Wieczór 13"
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

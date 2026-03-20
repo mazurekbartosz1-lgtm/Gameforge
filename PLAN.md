@@ -248,7 +248,7 @@ Confirm when done and show me what was created.
 
 ## TYDZIEŃ 3 — World map
 
-### [ ] Wieczór 11: Tiled editor + import Pixel Crawler Fairy Forest tileset
+### [x] Wieczór 11+12: Procedural map generation (replaced Tiled plan)
 
 ```
 Create a game map using Tiled Map Editor (https://www.mapeditor.org/).
@@ -280,7 +280,7 @@ Confirm when done and show me the layer structure and a count of spawn objects p
 
 ---
 
-### [ ] Wieczór 12: Load Tiled map in Phaser + zoom x2 + collisions
+### [x] Wieczór 12: (merged into Wieczór 11 — procedural map)
 
 ```
 Load the Tiled map created in Wieczór 11 into the Phaser PlayScene.
