@@ -341,6 +341,14 @@ export class GameRoom extends Room<GameRoomOptions> {
       console.log(`[GameRoom] action "${data.type}" by ${player.nickname} at (${Math.round(data.x)}, ${Math.round(data.y)})`);
     });
 
+    this.onMessage("request_resources", (client) => {
+      const resources: object[] = [];
+      this.state.resources.forEach((node) => {
+        resources.push({ id: node.id, type: node.type, x: node.x, y: node.y, hp: node.hp, maxHp: node.maxHp, isAlive: node.isAlive });
+      });
+      client.send("resources_init", resources);
+    });
+
     this.onMessage("harvest", (client, data: { id: string }) => {
       const node = this.state.resources.get(data.id);
       if (!node || !node.isAlive) return;

@@ -256,6 +256,7 @@ export class PlayScene extends Scene {
     room.onMessage("resources_init", (nodes: ResourceNodeData[]) => {
       nodes.forEach((n) => this.addResourceSprite(n));
     });
+    room.send("request_resources", {});
 
     room.onMessage("resource_update", (data: { id: string; hp: number; isAlive: boolean }) => {
       const rd = this.resourceData.get(data.id);
