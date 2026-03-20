@@ -62,6 +62,7 @@ export class PlayScene extends Scene {
   private sessionIdText!: Phaser.GameObjects.Text;
   private playerCount = 1;
   private generatedMap: GeneratedMap | null = null;
+  private followTarget!: Phaser.GameObjects.Rectangle;
 
   // Player world position (starts at map center)
   private px = MAP_WIDTH / 2 * TILE_SIZE;
@@ -103,8 +104,24 @@ export class PlayScene extends Scene {
     const tileset = map.addTilesetImage("fairy_tiles", "fairy_tiles", TILE_SIZE, TILE_SIZE, 0, 0);
     map.createLayer(0, tileset!, 0, 0);
 
-    // Camera bounds = full map
+    // Forest overlay — dark green rectangles over blocked tiles
+    // (replaced by tree sprites in Wieczór 13)
+    const forestGfx = this.add.graphics();
+    forestGfx.fillStyle(0x0d2b0d, 0.75);
+    const col = this.generatedMap.collisionMap;
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        if (col[y][x]) {
+          forestGfx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        }
+      }
+    }
+
+    // Camera bounds + follow target (invisible rectangle used for startFollow)
     this.cameras.main.setBounds(0, 0, MAP_WIDTH * TILE_SIZE, MAP_HEIGHT * TILE_SIZE);
+    this.followTarget = this.add.rectangle(this.px, this.py, 1, 1).setAlpha(0).setScrollFactor(1);
+    this.cameras.main.startFollow(this.followTarget, true);
+    this.cameras.main.centerOn(this.px, this.py); // initial snap
 
     // Animations
     createPlayerAnimations(this);
@@ -315,10 +332,8 @@ export class PlayScene extends Scene {
 
       this.sprites.forEach((s) => { s.x = this.px; s.y = this.py; });
       this.toolSprites.forEach((s) => { s.x = this.px; s.y = this.py; });
+      this.followTarget.setPosition(this.px, this.py);
     }
-
-    // Camera follows local player
-    this.cameras.main.centerOn(this.px, this.py);
 
     // Switch animation if changed
     if (animKey !== this.currentAnim) {
