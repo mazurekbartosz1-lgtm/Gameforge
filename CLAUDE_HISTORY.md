@@ -59,6 +59,29 @@
 
 ---
 
+## Session 3 — 2026-03-20 (continued)
+
+### What was done
+- Created ARCHITECTURE.md — full technical stack documentation with file structure, schema definitions, tick loop, message handlers, and key API decisions
+- Created CLAUDE_HISTORY.md — running development log with append-only rules and session entries for Sessions 1 and 2
+- Created SESSION_START_PROMPT.md — ready-to-paste prompt for starting new Claude Code sessions
+- Created PLAN.md — complete 50-evening development plan with detailed, self-contained Claude Code prompts for each evening, referencing real file paths and technology names
+
+### Decisions made
+- PLAN.md uses status markers: [x] Done, [~] In progress, [ ] Not started
+- Each prompt in PLAN.md is fully self-contained — no external context needed to execute
+- All documentation is self-maintaining: instructions for updating are embedded in each file
+
+### Problems encountered
+- Railway outage is still blocking Wieczór 3 deploy — all files are ready, just waiting for Railway to be back online
+
+### Next step
+Resume with Wieczór 3 (Railway deploy) when Railway is back online.
+Start next session by pasting SESSION_START_PROMPT.md to Claude Code.
+Wieczór 3 prompt is in PLAN.md — it covers the /health endpoint and environment variable setup.
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,
