@@ -245,5 +245,11 @@ export class GameRoom extends Room<GameRoomOptions> {
       if (!player) return;
       player.activeSlot = data.slot;
     });
+
+    this.onMessage("action", (client, data: { type: string; x: number; y: number }) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player) return;
+      console.log(`[GameRoom] action "${data.type}" by ${player.nickname} at (${Math.round(data.x)}, ${Math.round(data.y)})`);
+    });
   }
 }

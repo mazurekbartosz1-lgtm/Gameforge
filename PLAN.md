@@ -184,7 +184,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 9: Tool and attack animations
+### [x] Wieczór 9: Tool and attack animations
 
 ```
 Pixel Crawler Free Pack includes overlay sprites for tools and attacks.

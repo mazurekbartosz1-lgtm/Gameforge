@@ -257,6 +257,43 @@ Paste `SESSION_START_PROMPT.md` first, then use the Wieczór 6 prompt from `PLAN
 
 ---
 
+## Session 10 — 2026-03-20 (Session 3)
+
+### What was done
+- Discovered action animation sheets in Free Pack: Slice, Crush, Pierce, Collect (each with Down/Side/Up variants)
+- Verified actual frame size: 512×64 → 8 frames of 64×64 each (consistent with player sprites)
+- Copied 12 sheets to `public/assets/actions/` (flat paths, no spaces)
+- Created `src/app/game/animations/toolAnimations.ts` — `preloadToolSprites()` and `createToolAnimations()` registering 12 animations (4 actions × 3 dirs, frameRate 12 for attacks, 8 for collect, repeat 0)
+- Updated `PlayScene.ts`:
+  - Imports from toolAnimations.ts
+  - `toolSprites: Map<string, Phaser.GameObjects.Sprite>` — 12 hidden sprites at player position, depth 1
+  - `actionKeys` — SPACE and E bindings
+  - `playActionAnim(action)` — determines direction suffix+flipX, plays one-shot animation, hides on complete, sends `room.send('action', ...)`
+  - `update()` — JustDown checks for SPACE (slice) and E (collect)
+  - Tool sprites repositioned with player on move
+- Added `action` message handler in `server/src/GameRoom.ts` — logs action type, player, and position
+- TypeScript compiles with zero errors
+
+### Decisions made
+- Tool animation frame size: 64×64 (same as player sprites) — not 16×16 as original PLAN.md assumed
+- `isActionPlaying` guard prevents animation overlap (subsequent presses ignored while animation plays)
+- `Phaser.Input.Keyboard.JustDown()` used for action keys to prevent holding the key from spamming
+- tool sprites positioned via `toolSprites.forEach` in the same move block as player sprites
+
+### Problems encountered
+- Tool sprite showed on top of idle body sprite — tool sheets include the full character, so body sprites must be hidden during action and restored on animationcomplete
+- Default fps (12/8) felt too slow — bumped all action animations to 20fps
+
+### Next step
+**Wieczór 10** — Multiplayer test with two browser tabs.
+- Run Colyseus server + Next.js dev server simultaneously
+- Open two browser tabs at /game
+- Verify movement interpolation works between tabs
+- Fix CORS if needed, add "Players online: N" overlay text
+- Prompt is in PLAN.md under "Wieczór 10"
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

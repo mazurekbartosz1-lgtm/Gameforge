@@ -1,6 +1,13 @@
 import { Scene } from "phaser";
 import { type Room } from "colyseus.js";
 import { createPlayerAnimations } from "../animations/playerAnimations";
+import {
+  preloadToolSprites,
+  createToolAnimations,
+  ACTION_TYPES,
+  ACTION_DIRS,
+  type ActionType,
+} from "../animations/toolAnimations";
 import { getRoom } from "../network/ColyseusClient";
 
 type Direction = "down" | "up" | "left" | "right";
@@ -30,15 +37,26 @@ const ANIM_MAP: Record<string, { texture: string; flipX: boolean }> = {
 const SPEED = 100; // px/s
 const SEND_INTERVAL = 50; // ms
 
+// Direction → tool texture suffix + flipX
+const DIR_TO_TOOL: Record<Direction, { suffix: string; flipX: boolean }> = {
+  down:  { suffix: "down", flipX: false },
+  up:    { suffix: "up",   flipX: false },
+  left:  { suffix: "side", flipX: true  },
+  right: { suffix: "side", flipX: false },
+};
+
 export class PlayScene extends Scene {
   private sprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
+  private toolSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
+  private actionKeys!: Record<string, Phaser.Input.Keyboard.Key>;
   private direction: Direction = "down";
   private currentAnim = "idle_down";
   private lastSentAt = 0;
   private room: Room | null = null;
   private remotePlayers: Map<string, RemotePlayer> = new Map();
+  private isActionPlaying = false;
 
   // All sprites share this position
   private px = 400;
@@ -65,6 +83,8 @@ export class PlayScene extends Scene {
     this.load.spritesheet("walk_down",  "/assets/player/walk_down.png",  cfg);
     this.load.spritesheet("walk_up",    "/assets/player/walk_up.png",    cfg);
     this.load.spritesheet("walk_side",  "/assets/player/walk_side.png",  cfg);
+
+    preloadToolSprites(this);
   }
 
   create() {
@@ -73,6 +93,7 @@ export class PlayScene extends Scene {
 
     // Animations
     createPlayerAnimations(this);
+    createToolAnimations(this);
 
     // One sprite per texture — all at start position, only one visible at a time
     for (const key of Object.keys(ANIM_MAP)) {
@@ -87,9 +108,25 @@ export class PlayScene extends Scene {
 
     this.playAnim("idle_down");
 
+    // Tool sprites — one per action+dir texture, layered on top, all hidden
+    for (const action of ACTION_TYPES) {
+      for (const dir of ACTION_DIRS) {
+        const key = `${action}_${dir}`;
+        const s = this.add.sprite(this.px, this.py, key);
+        s.setScale(1.5);
+        s.setVisible(false);
+        s.setDepth(1);
+        this.toolSprites.set(key, s);
+      }
+    }
+
     // Input
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.wasd = this.input.keyboard!.addKeys("W,A,S,D") as Record<
+      string,
+      Phaser.Input.Keyboard.Key
+    >;
+    this.actionKeys = this.input.keyboard!.addKeys("SPACE,E") as Record<
       string,
       Phaser.Input.Keyboard.Key
     >;
@@ -180,8 +217,42 @@ export class PlayScene extends Scene {
     });
   }
 
+  private playActionAnim(action: ActionType) {
+    if (this.isActionPlaying) return;
+    const { suffix, flipX } = DIR_TO_TOOL[this.direction];
+    const key = `${action}_${suffix}`;
+    const sprite = this.toolSprites.get(key);
+    if (!sprite) return;
+
+    this.isActionPlaying = true;
+    // Hide body sprites during action — tool sheet includes the full character
+    this.sprites.forEach((s) => s.setVisible(false));
+    this.toolSprites.forEach((s) => s.setVisible(false));
+    sprite.setFlipX(flipX);
+    sprite.setVisible(true);
+    sprite.play(key);
+
+    sprite.once("animationcomplete", () => {
+      sprite.setVisible(false);
+      this.isActionPlaying = false;
+      // Restore body sprite
+      this.playAnim(this.currentAnim);
+    });
+
+    if (this.room) {
+      this.room.send("action", { type: action, x: this.px, y: this.py });
+    }
+  }
+
   update(time: number, delta: number) {
     const dt = delta / 1000;
+
+    // Action keys (one-shot, not repeating)
+    if (Phaser.Input.Keyboard.JustDown(this.actionKeys["SPACE"])) {
+      this.playActionAnim("slice");
+    } else if (Phaser.Input.Keyboard.JustDown(this.actionKeys["E"])) {
+      this.playActionAnim("collect");
+    }
 
     const left  = this.cursors.left.isDown  || this.wasd["A"].isDown;
     const right = this.cursors.right.isDown || this.wasd["D"].isDown;
@@ -205,6 +276,7 @@ export class PlayScene extends Scene {
       this.px += vx * dt;
       this.py += vy * dt;
       this.sprites.forEach((s) => { s.x = this.px; s.y = this.py; });
+      this.toolSprites.forEach((s) => { s.x = this.px; s.y = this.py; });
     }
 
     // Switch animation if changed
