@@ -355,7 +355,10 @@ Paste `SESSION_START_PROMPT.md` first, then use the Wieczór 6 prompt from `PLAN
 - Tile 28 used for forest floor (row 2 col 2, same column as grass tile 15) — visually distinct
 
 ### Problems encountered
-- None
+- Tile 28 (forest floor) looked identical to grass — not visually distinct
+- `centerOn()` in update() unreliable for camera tracking — player appeared at bottom-right instead of center
+- Fixed: forest = dark green Graphics overlay (0x0d2b0d, 75% alpha) over collisionMap tiles
+- Fixed: camera uses `startFollow(followTarget)` with invisible Rectangle that moves with player
 
 ### Next step
 **Wieczór 13** — Resource nodes (trees, rocks) visible on map.
