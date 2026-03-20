@@ -369,6 +369,36 @@ Paste `SESSION_START_PROMPT.md` first, then use the Wieczór 6 prompt from `PLAN
 
 ---
 
+## Session 13 — 2026-03-20 (Session 3, continued)
+
+### What was done
+- Implemented fog of war in PlayScene.ts (Wieczór 13)
+- `discovered[y][x]: boolean[][]` — persists in memory during session
+- `fogGraphics: Phaser.GameObjects.Graphics` — redrawn each frame (camera-visible tiles only)
+- `revealAround(tileX, tileY)` — marks all tiles within VISION_RADIUS=6 as discovered
+- `drawFog(tileX, tileY)` — renders per-tile: undiscovered=black 95%, explored=black 60%, visible=clear
+- Fog update only triggers when player crosses tile boundary (optimization)
+- Player sprites depth 9, tool sprites depth 10, fog depth 8, overlay text depth 10 (above fog)
+- Initial reveal on create() so player starts with visible area
+- **Wieczór 13 COMPLETE ✅**
+
+### Decisions made
+- Camera-visible tile range only redrawn each frame (~2000 tiles) — avoids full 6400-tile redraw
+- `drawFog` always called (even without movement) so fog renders correctly during camera scroll
+- `revealAround` called only on tile change for performance
+- Depth hierarchy: tilemap(0) → forest overlay(1) → fog(8) → player(9) → tool(10) → UI(10+)
+
+### Problems encountered
+- None
+
+### Next step
+**Wieczór 14** — Resource nodes (trees, rocks) on map with interaction.
+- Server generates ResourceNode positions from mapSeed
+- Client receives and renders tree/rock sprites
+- E key near resource → collect animation + server action handler
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

@@ -35,8 +35,9 @@ const ANIM_MAP: Record<string, { texture: string; flipX: boolean }> = {
   walk_right: { texture: "walk_side",  flipX: false },
 };
 
-const SPEED = 100; // px/s
+const SPEED = 100;       // px/s
 const SEND_INTERVAL = 50; // ms
+const VISION_RADIUS = 6;  // tiles
 
 // Direction → tool texture suffix + flipX
 const DIR_TO_TOOL: Record<Direction, { suffix: string; flipX: boolean }> = {
@@ -63,6 +64,10 @@ export class PlayScene extends Scene {
   private playerCount = 1;
   private generatedMap: GeneratedMap | null = null;
   private followTarget!: Phaser.GameObjects.Rectangle;
+  private fogGraphics!: Phaser.GameObjects.Graphics;
+  private discovered: boolean[][] = [];
+  private lastTileX = -1;
+  private lastTileY = -1;
 
   // Player world position (starts at map center)
   private px = MAP_WIDTH / 2 * TILE_SIZE;
@@ -123,6 +128,11 @@ export class PlayScene extends Scene {
     this.cameras.main.startFollow(this.followTarget, true);
     this.cameras.main.centerOn(this.px, this.py); // initial snap
 
+    // Fog of war — redrawn each frame, depth above map but below overlay text
+    this.discovered = Array.from({ length: MAP_HEIGHT }, () => new Array<boolean>(MAP_WIDTH).fill(false));
+    this.fogGraphics = this.add.graphics().setDepth(8);
+    this.revealAround(Math.floor(this.px / TILE_SIZE), Math.floor(this.py / TILE_SIZE));
+
     // Animations
     createPlayerAnimations(this);
     createToolAnimations(this);
@@ -132,7 +142,7 @@ export class PlayScene extends Scene {
       const { texture } = ANIM_MAP[key];
       if (!this.sprites.has(texture)) {
         const s = this.add.sprite(this.px, this.py, texture);
-        s.setScale(1.5);
+        s.setScale(1.5).setDepth(9);
         s.setVisible(false);
         this.sprites.set(texture, s);
       }
@@ -145,9 +155,8 @@ export class PlayScene extends Scene {
       for (const dir of ACTION_DIRS) {
         const key = `${action}_${dir}`;
         const s = this.add.sprite(this.px, this.py, key);
-        s.setScale(1.5);
+        s.setScale(1.5).setDepth(10);
         s.setVisible(false);
-        s.setDepth(1);
         this.toolSprites.set(key, s);
       }
     }
@@ -261,6 +270,47 @@ export class PlayScene extends Scene {
     });
   }
 
+  private revealAround(tileX: number, tileY: number) {
+    for (let dy = -VISION_RADIUS; dy <= VISION_RADIUS; dy++) {
+      for (let dx = -VISION_RADIUS; dx <= VISION_RADIUS; dx++) {
+        if (dx * dx + dy * dy > VISION_RADIUS * VISION_RADIUS) continue;
+        const tx = tileX + dx;
+        const ty = tileY + dy;
+        if (tx >= 0 && ty >= 0 && tx < MAP_WIDTH && ty < MAP_HEIGHT) {
+          this.discovered[ty][tx] = true;
+        }
+      }
+    }
+  }
+
+  private drawFog(playerTileX: number, playerTileY: number) {
+    const cam = this.cameras.main;
+    const startX = Math.max(0, Math.floor(cam.scrollX / TILE_SIZE) - 1);
+    const startY = Math.max(0, Math.floor(cam.scrollY / TILE_SIZE) - 1);
+    const endX = Math.min(MAP_WIDTH - 1, startX + Math.ceil(cam.width / TILE_SIZE) + 2);
+    const endY = Math.min(MAP_HEIGHT - 1, startY + Math.ceil(cam.height / TILE_SIZE) + 2);
+
+    this.fogGraphics.clear();
+
+    for (let ty = startY; ty <= endY; ty++) {
+      for (let tx = startX; tx <= endX; tx++) {
+        const disc = this.discovered[ty][tx];
+        const dx = tx - playerTileX;
+        const dy = ty - playerTileY;
+        const inVision = dx * dx + dy * dy <= VISION_RADIUS * VISION_RADIUS;
+
+        if (inVision) continue; // fully visible — no fog
+
+        if (disc) {
+          this.fogGraphics.fillStyle(0x000000, 0.6); // explored but dark
+        } else {
+          this.fogGraphics.fillStyle(0x000000, 0.95); // undiscovered
+        }
+        this.fogGraphics.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+      }
+    }
+  }
+
   private playActionAnim(action: ActionType) {
     if (this.isActionPlaying) return;
     const { suffix, flipX } = DIR_TO_TOOL[this.direction];
@@ -339,6 +389,16 @@ export class PlayScene extends Scene {
     if (animKey !== this.currentAnim) {
       this.playAnim(animKey);
     }
+
+    // Fog of war — update only when player moves to a new tile
+    const tileX = Math.floor(this.px / TILE_SIZE);
+    const tileY = Math.floor(this.py / TILE_SIZE);
+    if (tileX !== this.lastTileX || tileY !== this.lastTileY) {
+      this.lastTileX = tileX;
+      this.lastTileY = tileY;
+      this.revealAround(tileX, tileY);
+    }
+    this.drawFog(tileX, tileY);
 
     // Interpolate remote players
     this.remotePlayers.forEach((remote) => {

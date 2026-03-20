@@ -316,7 +316,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 13: Fog of war + persistent discoveries
+### [x] Wieczór 13: Fog of war + persistent discoveries
 
 ```
 Implement fog of war in the Phaser PlayScene (src/app/game/scenes/PlayScene.ts).
