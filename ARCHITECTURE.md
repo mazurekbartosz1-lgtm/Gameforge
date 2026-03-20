@@ -10,7 +10,8 @@ new decisions, installed packages, or structural changes made during the session
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
-- **Status:** Railway deploy ✅ DONE — Colyseus running on Railway
+- **Railway internal port:** 8080 (domain mapped to port 8080 in Railway Networking settings)
+- **Status:** Colyseus fully deployed and working on Railway ✅
 
 ---
 

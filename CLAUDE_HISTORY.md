@@ -112,6 +112,29 @@ Start next session by pasting SESSION_START_PROMPT.md to Claude Code.
 
 ---
 
+## Session 5 — 2026-03-20 (continued)
+
+### What was done
+- Fixed Railway deployment: Root Directory set to `server/` in Railway project settings
+- Domain port mapped to 8080 in Railway Networking settings
+- Confirmed Colyseus server responding at `gameforge-production-d7c8.up.railway.app` — returns `Colyseus 0.17.39` ✅
+- **Wieczór 3 COMPLETE ✅**
+
+### Decisions made
+- Railway requires Root Directory = `server/` so it reads `server/package.json` (not root Next.js package.json)
+- Railway internal port must be set to 8080 in Networking settings and mapped to the public domain
+
+### Problems encountered
+- Server code and local build were correct all along — issue was purely Railway dashboard configuration
+- `listen("0.0.0.0")` was already the right fix; Railway port mapping was the missing piece
+
+### Next step
+**Wieczór 4** — Install Phaser 3 in Next.js, create `/game` page with a GameCanvas component,
+display first Pixel Crawler sprite (Body_A) with idle_down animation.
+Prompt is in PLAN.md under "Wieczór 4".
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,
