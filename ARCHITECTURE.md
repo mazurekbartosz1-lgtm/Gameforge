@@ -8,6 +8,10 @@ new decisions, installed packages, or structural changes made during the session
 ## Last updated
 2026-03-20
 
+## Live URLs
+- **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
+- **Status:** Railway deploy ✅ DONE — Colyseus running on Railway
+
 ---
 
 ## Project overview
@@ -53,7 +57,8 @@ Gameforge/
 | Transport | @colyseus/ws-transport (WebSocket) |
 | Language | TypeScript → compiled to `dist/` via `tsc` |
 | Dev server | ts-node + nodemon |
-| Deployment target | Railway |
+| Deployment target | Railway — `gameforge-production-d7c8.up.railway.app` |
+| WebSocket URL | `wss://gameforge-production-d7c8.up.railway.app` |
 
 ## Game server schemas (GameRoom.ts)
 - `PlayerState` — sessionId, userId, nickname, x/y, hp, hunger, sanity, inventory, equipment, activeSlot, direction, animKey, isOnline
@@ -76,6 +81,7 @@ Gameforge/
 
 ## Key decisions
 - **Assets in `public/`** — moved from `src/app/assets/` so Next.js serves them as static files
-- **CommonJS server** — `"type": "commonjs"` in server/package.json; tsconfig uses `module: commonjs` for ts-node compatibility
+- **ESM server** — `"type": "module"` in server/package.json; tsconfig uses `module: NodeNext` / `moduleResolution: NodeNext`; local imports require `.js` extensions
+- **ESM migration reason** — Colyseus 0.17 depends on `@colyseus/better-call` → `rou3` which is ESM-only; `ERR_REQUIRE_ESM` crash on Railway with CommonJS
 - **`onLeave` signature** — Colyseus 0.17 uses `(client, code?: number)`, not `(client, consented: boolean)`
 - **Room generic** — `Room<T>` in 0.17 takes a `RoomOptions`-shaped object (`{ state?: object }`), not the state type directly

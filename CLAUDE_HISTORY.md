@@ -82,6 +82,36 @@ Wieczór 3 prompt is in PLAN.md — it covers the /health endpoint and environme
 
 ---
 
+## Session 4 — 2026-03-20 (continued)
+
+### What was done
+- Fixed Vercel build — excluded `server/` from Next.js TypeScript compilation (`tsconfig.json` exclude array)
+- Fixed Next.js 16 / Turbopack conflict — replaced webpack config with `turbopack: {}` in `next.config.ts`
+- Fixed ESM/CommonJS conflict in Colyseus server crashing on Railway (`ERR_REQUIRE_ESM` from `rou3` via `@colyseus/better-call`)
+  - Changed `server/package.json` `"type"` from `"commonjs"` to `"module"`
+  - Changed `server/tsconfig.json` module + moduleResolution to `NodeNext`
+  - Updated `server/src/index.ts` local import to `"./GameRoom.js"` (ESM requires explicit extensions)
+- Successfully deployed Colyseus to Railway: `gameforge-production-d7c8.up.railway.app`
+- Created all 5 documentation files: ARCHITECTURE.md, PRD.md, CLAUDE_HISTORY.md, SESSION_START_PROMPT.md, PLAN.md
+- **Wieczór 3 — DONE ✅**
+
+### Decisions made
+- Server must use ESM (`"type": "module"`) because Colyseus 0.17.x dependency chain includes ESM-only packages
+- Next.js 16 uses Turbopack by default — webpack config causes build failure; use `turbopack: {}` instead
+- `server/` must be in root `tsconfig.json` exclude list to prevent Next.js from trying to compile Colyseus code
+
+### Problems encountered
+- Railway outage delayed Wieczór 3 deploy by one session
+- `ERR_REQUIRE_ESM` from `rou3` — not obvious from Colyseus docs, required ESM conversion of entire server
+- Next.js 16 Turbopack is a breaking change from Next.js 14/15 webpack behavior
+
+### Next step
+**Wieczór 4** — Phaser in Next.js + first Pixel Crawler sprite.
+Prompt is in PLAN.md under "Wieczór 4".
+Start next session by pasting SESSION_START_PROMPT.md to Claude Code.
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,
