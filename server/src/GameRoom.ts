@@ -90,6 +90,41 @@ export class WorldState extends Schema {
   @type("uint32") mapSeed: number = 0;    // procedural map seed — same for all players in room
 }
 
+// ─── Seeded PRNG (mulberry32) ────────────────────────────────────────────────
+
+function mulberry32(seed: number) {
+  return function () {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Mirror of client MapGenerator.isForestTile — kept in sync manually
+const SPAWN_CLEAR_RADIUS = 22;
+const SMOOTH_RADIUS      = 10;
+const SMOOTH_CELLS       = (2 * SMOOTH_RADIUS + 1) ** 2;
+const FOREST_THRESHOLD   = 0.522;
+const TILE_SIZE          = 16;
+
+function terrainHash(wx: number, wy: number, seed: number): number {
+  let h = (seed ^ Math.imul(wx, 374761393) ^ Math.imul(wy, 668265263)) | 0;
+  h = (h + 0x6D2B79F5) | 0;
+  let t = Math.imul(h ^ (h >>> 15), 1 | h);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
+function isForestTile(wx: number, wy: number, seed: number): boolean {
+  if (wx * wx + wy * wy < SPAWN_CLEAR_RADIUS * SPAWN_CLEAR_RADIUS) return false;
+  let sum = 0;
+  for (let dy = -SMOOTH_RADIUS; dy <= SMOOTH_RADIUS; dy++)
+    for (let dx = -SMOOTH_RADIUS; dx <= SMOOTH_RADIUS; dx++)
+      sum += terrainHash(wx + dx, wy + dy, seed);
+  return sum / SMOOTH_CELLS > FOREST_THRESHOLD;
+}
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const TICK_RATE = 1000;          // ms between ticks
@@ -107,9 +142,10 @@ export class GameRoom extends Room<GameRoomOptions> {
     const state = new WorldState();
     state.mapSeed = Math.floor(Math.random() * 2_147_483_647); // random uint31
     this.setState(state);
+    this.spawnResources(state.mapSeed);
     this.setSimulationInterval(() => this.tick(), TICK_RATE);
     this.registerMessageHandlers();
-    console.log(`[GameRoom] created – roomId: ${this.roomId}`);
+    console.log(`[GameRoom] created – roomId: ${this.roomId}, seed: ${state.mapSeed}`);
   }
 
   onJoin(client: Client, options: { userId?: string; nickname?: string }) {
@@ -130,6 +166,13 @@ export class GameRoom extends Room<GameRoomOptions> {
       }
     });
     client.send("players_init", existing);
+
+    // Send all resource nodes to the new client
+    const resources: object[] = [];
+    this.state.resources.forEach((node) => {
+      resources.push({ id: node.id, type: node.type, x: node.x, y: node.y, hp: node.hp, maxHp: node.maxHp, isAlive: node.isAlive });
+    });
+    client.send("resources_init", resources);
 
     // Notify everyone else about the new player
     this.broadcast("player_add", {
@@ -190,12 +233,55 @@ export class GameRoom extends Room<GameRoomOptions> {
     });
   }
 
+  private spawnResources(seed: number) {
+    const rng = mulberry32(seed ^ 0xDEADBEEF);
+    let trees = 0, rocks = 0;
+    let tries = 0;
+
+    // Trees — placed in forest tiles
+    while (trees < 150 && tries < 3000) {
+      tries++;
+      const wx = Math.floor((rng() - 0.5) * 300);
+      const wy = Math.floor((rng() - 0.5) * 300);
+      if (!isForestTile(wx, wy, seed)) continue;
+      const node = new ResourceNode();
+      node.id = `tree_${trees}`;
+      node.type = "tree";
+      node.x = wx * TILE_SIZE + TILE_SIZE / 2;
+      node.y = wy * TILE_SIZE + TILE_SIZE / 2;
+      node.hp = 5; node.maxHp = 5; node.isAlive = true;
+      this.state.resources.set(node.id, node);
+      trees++;
+    }
+
+    // Rocks — placed in open areas
+    tries = 0;
+    while (rocks < 50 && tries < 2000) {
+      tries++;
+      const wx = Math.floor((rng() - 0.5) * 300);
+      const wy = Math.floor((rng() - 0.5) * 300);
+      if (wx * wx + wy * wy < SPAWN_CLEAR_RADIUS * SPAWN_CLEAR_RADIUS) continue;
+      if (isForestTile(wx, wy, seed)) continue;
+      const node = new ResourceNode();
+      node.id = `rock_${rocks}`;
+      node.type = "rock";
+      node.x = wx * TILE_SIZE + TILE_SIZE / 2;
+      node.y = wy * TILE_SIZE + TILE_SIZE / 2;
+      node.hp = 3; node.maxHp = 3; node.isAlive = true;
+      this.state.resources.set(node.id, node);
+      rocks++;
+    }
+
+    console.log(`[GameRoom] spawned ${trees} trees + ${rocks} rocks`);
+  }
+
   private respawnNodes(now: number) {
     this.state.resources.forEach((node: ResourceNode) => {
       if (!node.isAlive && node.respawnAt > 0 && now >= node.respawnAt) {
         node.hp = node.maxHp;
         node.isAlive = true;
         node.respawnAt = 0;
+        this.broadcast("resource_update", { id: node.id, hp: node.hp, isAlive: true });
       }
     });
 
@@ -253,6 +339,19 @@ export class GameRoom extends Room<GameRoomOptions> {
       const player = this.state.players.get(client.sessionId);
       if (!player) return;
       console.log(`[GameRoom] action "${data.type}" by ${player.nickname} at (${Math.round(data.x)}, ${Math.round(data.y)})`);
+    });
+
+    this.onMessage("harvest", (client, data: { id: string }) => {
+      const node = this.state.resources.get(data.id);
+      if (!node || !node.isAlive) return;
+      node.hp = Math.max(0, node.hp - 1);
+      if (node.hp <= 0) {
+        node.isAlive = false;
+        node.respawnAt = Date.now() + 60_000; // 60 s respawn
+      }
+      this.broadcast("resource_update", { id: data.id, hp: node.hp, isAlive: node.isAlive });
+      const player = this.state.players.get(client.sessionId);
+      console.log(`[GameRoom] ${player?.nickname ?? client.sessionId} harvested ${data.id} (hp: ${node.hp})`);
     });
   }
 }

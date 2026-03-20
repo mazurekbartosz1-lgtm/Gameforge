@@ -23,6 +23,16 @@ interface RemotePlayer {
   currentAnim: string;
 }
 
+interface ResourceNodeData {
+  id: string;
+  type: "tree" | "rock";
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  isAlive: boolean;
+}
+
 const ANIM_MAP: Record<string, { texture: string; flipX: boolean }> = {
   idle_down:  { texture: "idle_down",  flipX: false },
   idle_up:    { texture: "idle_up",    flipX: false },
@@ -64,6 +74,8 @@ export class PlayScene extends Scene {
 
   private room: Room | null = null;
   private remotePlayers: Map<string, RemotePlayer> = new Map();
+  private resourceSprites: Map<string, Phaser.GameObjects.Image> = new Map();
+  private resourceData:   Map<string, ResourceNodeData>           = new Map();
 
   private mapSeed = 42;
 
@@ -122,6 +134,9 @@ export class PlayScene extends Scene {
 
     // ── Forest overlay — redrawn per frame (camera-visible tiles only) ─────
     this.forestGfx = this.add.graphics().setDepth(1);
+
+    // ── Resource textures (procedural, no external assets needed) ──────────
+    this.createResourceTextures();
 
     // ── Animations ─────────────────────────────────────────────────────────
     createPlayerAnimations(this);
@@ -237,6 +252,46 @@ export class PlayScene extends Scene {
       this.playerCount = Math.max(1, this.playerCount - 1);
       this.playersOnlineText.setText(`Players online: ${this.playerCount}`);
     });
+
+    room.onMessage("resources_init", (nodes: ResourceNodeData[]) => {
+      nodes.forEach((n) => this.addResourceSprite(n));
+    });
+
+    room.onMessage("resource_update", (data: { id: string; hp: number; isAlive: boolean }) => {
+      const rd = this.resourceData.get(data.id);
+      if (rd) { rd.hp = data.hp; rd.isAlive = data.isAlive; }
+    });
+  }
+
+  // ── Resources ─────────────────────────────────────────────────────────────
+
+  private createResourceTextures() {
+    // Tree: green canopy + brown trunk
+    const tg = this.add.graphics();
+    tg.fillStyle(0x5a4a2a);
+    tg.fillRect(12, 24, 8, 8);
+    tg.fillStyle(0x1a5c1a);
+    tg.fillCircle(16, 14, 14);
+    tg.fillStyle(0x2e8b2e);
+    tg.fillCircle(12, 10, 8);
+    tg.generateTexture("res_tree", 32, 32);
+    tg.destroy();
+
+    // Rock: gray ellipse with highlight
+    const rg = this.add.graphics();
+    rg.fillStyle(0x808080);
+    rg.fillEllipse(16, 18, 28, 20);
+    rg.fillStyle(0xb0b0b0);
+    rg.fillEllipse(11, 13, 12, 8);
+    rg.generateTexture("res_rock", 32, 32);
+    rg.destroy();
+  }
+
+  private addResourceSprite(n: ResourceNodeData) {
+    this.resourceData.set(n.id, n);
+    const tex = n.type === "tree" ? "res_tree" : "res_rock";
+    const sprite = this.add.image(n.x, n.y, tex).setDepth(2).setVisible(false);
+    this.resourceSprites.set(n.id, sprite);
   }
 
   // ── Fog of war ────────────────────────────────────────────────────────────
@@ -323,10 +378,9 @@ export class PlayScene extends Scene {
     const dt = delta / 1000;
 
     // Action keys
+    const eJustDown = Phaser.Input.Keyboard.JustDown(this.actionKeys["E"]);
     if (Phaser.Input.Keyboard.JustDown(this.actionKeys["SPACE"])) {
       this.playActionAnim("slice");
-    } else if (Phaser.Input.Keyboard.JustDown(this.actionKeys["E"])) {
-      this.playActionAnim("collect");
     }
 
     // Movement
@@ -402,6 +456,31 @@ export class PlayScene extends Scene {
       }
       remote.label.setVisible(inVision);
     });
+
+    // Resource visibility + harvest on E key
+    const visionPxSq = (VISION_RADIUS * TILE_SIZE) ** 2;
+    const harvestRangeSq = (3 * TILE_SIZE) ** 2;
+    let nearestId: string | null = null;
+    let nearestDistSq = Infinity;
+
+    this.resourceData.forEach((rd, id) => {
+      const sprite = this.resourceSprites.get(id);
+      if (!sprite) return;
+      const dx = rd.x - this.px;
+      const dy = rd.y - this.py;
+      const distSq = dx * dx + dy * dy;
+      const inVision = distSq <= visionPxSq;
+      sprite.setVisible(rd.isAlive && inVision);
+      if (rd.isAlive && inVision && distSq <= harvestRangeSq && distSq < nearestDistSq) {
+        nearestDistSq = distSq;
+        nearestId = id;
+      }
+    });
+
+    if (eJustDown && nearestId && !this.isActionPlaying) {
+      this.room?.send("harvest", { id: nearestId });
+      this.playActionAnim("collect");
+    }
 
     // Colyseus send (throttled)
     if (this.room && time - this.lastSentAt > SEND_INTERVAL) {
