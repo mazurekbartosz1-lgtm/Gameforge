@@ -13,7 +13,15 @@ export default function PhaserGame() {
 
     (async () => {
       const { Game, AUTO, Scale } = await import("phaser");
-      const { GameScene } = await import("./GameScene");
+      const { PlayScene } = await import("./scenes/PlayScene");
+      const { connectRoom } = await import("./network/ColyseusClient");
+
+      // Connect to Colyseus before starting Phaser so getRoom() works in PlayScene
+      try {
+        await connectRoom();
+      } catch (err) {
+        console.warn("Colyseus connection failed (offline?):", err);
+      }
 
       gameRef.current = new Game({
         type: AUTO,
@@ -27,7 +35,7 @@ export default function PhaserGame() {
           mode: Scale.FIT,
           autoCenter: Scale.CENTER_BOTH,
         },
-        scene: [GameScene],
+        scene: [PlayScene],
       });
     })();
 

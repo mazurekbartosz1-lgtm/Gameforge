@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-20 (Session 2, end of Wieczór 6)
+2026-03-20 (Session 3, end of Wieczór 7)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -15,7 +15,8 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ Wieczór 4: Phaser 3.90.0 installed, first sprite displayed in browser
 - ✅ Wieczór 5: WorldState schema complete (all 6 schemas in `server/src/GameRoom.ts`)
 - ✅ Wieczór 6: Body_A animations complete — 8 directions, grass background, scale ×1.5, cycling demo
-- ⏳ Wieczór 7: Player movement synchronized via Colyseus — NEXT
+- ✅ Wieczór 7: Player movement synchronized via Colyseus — WASD/arrows, sends `move` every 50ms
+- ⏳ Wieczór 8: Render other players + interpolation — NEXT
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
@@ -89,6 +90,22 @@ Gameforge/
 - `move` — x, y, direction, animKey
 - `equip` — slot, itemId
 - `activeSlot` — slot index
+
+## Wieczór 7 additions
+
+### New files
+- `src/app/game/network/ColyseusClient.ts` — singleton `Client`; `connectRoom()` joins `game_room`; `getRoom()` returns current room
+- `src/app/game/scenes/PlayScene.ts` — replaces demo `GameScene`; WASD + arrow movement, Body_A multi-texture animations, sends `move` {x,y,direction,animKey} to Colyseus every 50ms
+- `.env.local` — `NEXT_PUBLIC_COLYSEUS_URL=ws://localhost:2567`
+
+### Changes
+- `PhaserGame.tsx` — now imports `PlayScene` and calls `connectRoom()` before Phaser init
+- `server/package.json` — replaced `ts-node` dev script with `tsx watch src/index.ts` (ts-node can't handle ESM `"type":"module"`)
+
+### Key decisions
+- **tsx for server dev** — `ts-node` crashes with `ERR_MODULE_NOT_FOUND` on ESM imports (`.js` extensions required by NodeNext); `tsx` handles ESM natively without extra flags
+- **side sprite flipX** — `idle_side`/`walk_side` sheets face RIGHT by default; `flipX: true` = left, `flipX: false` = right (opposite of initial assumption)
+- **connectRoom before Phaser** — Colyseus must connect before `PlayScene.create()` so `getRoom()` returns a non-null room
 
 ## Key decisions
 - **Body_A animation sheets** — PLAN.md assumed a single `Body_A.png`; actual assets are separate sheets per animation (Idle_Down-Sheet.png, Walk_Down-Sheet.png, etc.) with 4 rows each. Row 0 = base Body_A layer. Sheets copied to `public/assets/player/` to avoid spaces in URLs.

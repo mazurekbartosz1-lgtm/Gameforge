@@ -119,7 +119,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 7: Player movement synchronized via Colyseus
+### [x] Wieczór 7: Player movement synchronized via Colyseus
 
 ```
 Install the Colyseus JavaScript client SDK in the root Next.js project:
