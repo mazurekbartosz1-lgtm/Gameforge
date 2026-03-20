@@ -1,12 +1,21 @@
 import { Server } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { GameRoom } from "./GameRoom.js";
+import type { Request, Response, NextFunction } from "express";
 
 const PORT = Number(process.env.PORT ?? 2567);
 
-const gameServer = new Server({
-  transport: new WebSocketTransport(),
+const transport = new WebSocketTransport();
+
+// Allow CORS for Colyseus HTTP matchmaking endpoints
+const app = transport.getExpressApp();
+app.use((_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+  next();
 });
+
+const gameServer = new Server({ transport });
 
 gameServer.define("game_room", GameRoom);
 

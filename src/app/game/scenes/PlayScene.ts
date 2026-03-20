@@ -57,6 +57,9 @@ export class PlayScene extends Scene {
   private room: Room | null = null;
   private remotePlayers: Map<string, RemotePlayer> = new Map();
   private isActionPlaying = false;
+  private playersOnlineText!: Phaser.GameObjects.Text;
+  private sessionIdText!: Phaser.GameObjects.Text;
+  private playerCount = 1; // local player always counts
 
   // All sprites share this position
   private px = 400;
@@ -133,6 +136,12 @@ export class PlayScene extends Scene {
 
     // Colyseus room (already connected via PhaserGame.tsx)
     this.room = getRoom();
+
+    // Overlay — fixed to camera, depth 10
+    const textStyle = { fontSize: "12px", color: "#ffffff", backgroundColor: "#00000088", padding: { x: 6, y: 3 } };
+    this.playersOnlineText = this.add.text(8, 8, "Players online: 1", textStyle).setScrollFactor(0).setDepth(10);
+    this.sessionIdText = this.add.text(792, 8, this.room?.sessionId ?? "—", { fontSize: "10px", color: "#aaaaaa", backgroundColor: "#00000066", padding: { x: 4, y: 2 } }).setOrigin(1, 0).setScrollFactor(0).setDepth(10);
+
     if (this.room) {
       this.setupMessageHandlers(this.room);
     }
@@ -189,6 +198,8 @@ export class PlayScene extends Scene {
   private setupMessageHandlers(room: Room) {
     room.onMessage("players_init", (players: Array<{ sessionId: string; x: number; y: number; animKey: string; nickname: string }>) => {
       players.forEach((p) => this.addRemotePlayer(p.sessionId, p));
+      this.playerCount = 1 + players.length;
+      this.playersOnlineText.setText(`Players online: ${this.playerCount}`);
     });
 
     // Request current players now that handlers are ready
@@ -196,6 +207,8 @@ export class PlayScene extends Scene {
 
     room.onMessage("player_add", (p: { sessionId: string; x: number; y: number; animKey: string; nickname: string }) => {
       this.addRemotePlayer(p.sessionId, p);
+      this.playerCount++;
+      this.playersOnlineText.setText(`Players online: ${this.playerCount}`);
     });
 
     room.onMessage("player_move", (data: { sessionId: string; x: number; y: number; animKey: string }) => {
@@ -214,6 +227,8 @@ export class PlayScene extends Scene {
       remote.sprites.forEach((s) => s.destroy());
       remote.label.destroy();
       this.remotePlayers.delete(data.sessionId);
+      this.playerCount = Math.max(1, this.playerCount - 1);
+      this.playersOnlineText.setText(`Players online: ${this.playerCount}`);
     });
   }
 

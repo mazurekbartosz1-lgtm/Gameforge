@@ -294,6 +294,35 @@ Paste `SESSION_START_PROMPT.md` first, then use the Wieczór 6 prompt from `PLAN
 
 ---
 
+## Session 11 — 2026-03-20 (Session 3, continued)
+
+### What was done
+- Added CORS Express middleware to `server/src/index.ts` via `transport.getExpressApp()` — sets `Access-Control-Allow-Origin: *` for Colyseus HTTP matchmaking endpoints
+- Installed `@types/express` in server dev dependencies (needed for typed middleware params)
+- Added "Players online: N" overlay (top-left) and session ID text (top-right) to PlayScene
+  - Both use `setScrollFactor(0)` + `setDepth(10)` to stay fixed to camera
+  - Count updates on `players_init`, `player_add`, `player_remove`
+- **Wieczór 10 COMPLETE ✅**
+
+### Decisions made
+- CORS handled via Express middleware (not WebSocketTransport option — `cors` doesn't exist in `TransportOptions`)
+- `playerCount` initialized to 1 (local player), updated on server messages — no room state query needed
+- Overlay uses `setScrollFactor(0)` instead of setting camera-fixed position manually
+
+### Problems encountered
+- `cors` property doesn't exist in `WebSocketTransport` options — used `getExpressApp()` instead
+- `@types/express` was missing from server devDependencies — caused TS7016 error on Express types import
+
+### Next step
+**Wieczór 11** — Tiled editor + import Pixel Crawler Fairy Forest tileset.
+- Download and install Tiled Map Editor
+- Create 100×100 tile map (16×16 tiles = 1600×1600px)
+- Import Fairy Forest tileset, create Ground/Decoration/Collision/Spawns layers
+- Export as `public/assets/maps/world.tmj`
+- Prompt is in PLAN.md under "Wieczór 11"
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

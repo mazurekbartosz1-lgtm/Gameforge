@@ -217,7 +217,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 10: Multiplayer test with two browser tabs
+### [x] Wieczór 10: Multiplayer test with two browser tabs
 
 ```
 Verify the full multiplayer loop works by running two browser tabs simultaneously.
