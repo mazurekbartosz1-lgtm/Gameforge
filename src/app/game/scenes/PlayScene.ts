@@ -5,6 +5,16 @@ import { getRoom } from "../network/ColyseusClient";
 
 type Direction = "down" | "up" | "left" | "right";
 
+interface RemotePlayer {
+  sprites: Map<string, Phaser.GameObjects.Sprite>;
+  label: Phaser.GameObjects.Text;
+  x: number;
+  y: number;
+  targetX: number;
+  targetY: number;
+  currentAnim: string;
+}
+
 // Map animation key → texture key + flip
 const ANIM_MAP: Record<string, { texture: string; flipX: boolean }> = {
   idle_down:  { texture: "idle_down",  flipX: false },
@@ -28,6 +38,7 @@ export class PlayScene extends Scene {
   private currentAnim = "idle_down";
   private lastSentAt = 0;
   private room: Room | null = null;
+  private remotePlayers: Map<string, RemotePlayer> = new Map();
 
   // All sprites share this position
   private px = 400;
@@ -85,6 +96,88 @@ export class PlayScene extends Scene {
 
     // Colyseus room (already connected via PhaserGame.tsx)
     this.room = getRoom();
+    if (this.room) {
+      this.setupMessageHandlers(this.room);
+    }
+  }
+
+  private createRemoteSprites(x: number, y: number): Map<string, Phaser.GameObjects.Sprite> {
+    const textures = ["idle_down", "idle_up", "idle_side", "walk_down", "walk_up", "walk_side"];
+    const sprites = new Map<string, Phaser.GameObjects.Sprite>();
+    for (const tex of textures) {
+      const s = this.add.sprite(x, y, tex);
+      s.setScale(1.5);
+      s.setVisible(false);
+      sprites.set(tex, s);
+    }
+    return sprites;
+  }
+
+  private playRemoteAnim(remote: RemotePlayer, animKey: string) {
+    remote.currentAnim = animKey;
+    const { texture, flipX } = ANIM_MAP[animKey] ?? ANIM_MAP["idle_down"];
+    remote.sprites.forEach((s, key) => {
+      const visible = key === texture;
+      s.setVisible(visible);
+      if (visible) {
+        s.setFlipX(flipX);
+        s.play(animKey, true);
+      }
+    });
+  }
+
+  private addRemotePlayer(sessionId: string, data: { x: number; y: number; animKey: string; nickname: string }) {
+    if (this.remotePlayers.has(sessionId)) return;
+    const sprites = this.createRemoteSprites(data.x, data.y);
+    const label = this.add.text(data.x, data.y - 52, data.nickname ?? sessionId, {
+      fontSize: "8px",
+      color: "#ffffff",
+      backgroundColor: "#00000088",
+      padding: { x: 3, y: 1 },
+    }).setOrigin(0.5);
+    const remote: RemotePlayer = {
+      sprites,
+      label,
+      x: data.x,
+      y: data.y,
+      targetX: data.x,
+      targetY: data.y,
+      currentAnim: data.animKey ?? "idle_down",
+    };
+    this.remotePlayers.set(sessionId, remote);
+    this.playRemoteAnim(remote, remote.currentAnim);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private setupMessageHandlers(room: Room) {
+    room.onMessage("players_init", (players: Array<{ sessionId: string; x: number; y: number; animKey: string; nickname: string }>) => {
+      players.forEach((p) => this.addRemotePlayer(p.sessionId, p));
+    });
+
+    // Request current players now that handlers are ready
+    room.send("request_players", {});
+
+    room.onMessage("player_add", (p: { sessionId: string; x: number; y: number; animKey: string; nickname: string }) => {
+      this.addRemotePlayer(p.sessionId, p);
+    });
+
+    room.onMessage("player_move", (data: { sessionId: string; x: number; y: number; animKey: string }) => {
+      const remote = this.remotePlayers.get(data.sessionId);
+      if (!remote) return;
+      remote.targetX = data.x;
+      remote.targetY = data.y;
+      if (data.animKey !== remote.currentAnim) {
+        this.playRemoteAnim(remote, data.animKey);
+      }
+    });
+
+    room.onMessage("player_remove", (data: { sessionId: string }) => {
+      const remote = this.remotePlayers.get(data.sessionId);
+      if (!remote) return;
+      remote.sprites.forEach((s) => s.destroy());
+      remote.label.destroy();
+      this.remotePlayers.delete(data.sessionId);
+    });
   }
 
   update(time: number, delta: number) {
@@ -118,6 +211,15 @@ export class PlayScene extends Scene {
     if (animKey !== this.currentAnim) {
       this.playAnim(animKey);
     }
+
+    // Interpolate remote players
+    this.remotePlayers.forEach((remote) => {
+      remote.x = Phaser.Math.Linear(remote.x, remote.targetX, 0.2);
+      remote.y = Phaser.Math.Linear(remote.y, remote.targetY, 0.2);
+      remote.sprites.forEach((s) => { s.x = remote.x; s.y = remote.y; });
+      remote.label.x = remote.x;
+      remote.label.y = remote.y - 52;
+    });
 
     // Send to Colyseus (throttled)
     if (this.room && time - this.lastSentAt > SEND_INTERVAL) {

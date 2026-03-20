@@ -150,7 +150,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 8: Render other players + interpolation
+### [x] Wieczór 8: Render other players + interpolation
 
 ```
 In src/app/game/scenes/PlayScene.ts, render all other connected players from Colyseus

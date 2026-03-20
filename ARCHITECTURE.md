@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-20 (Session 3, end of Wieczór 7)
+2026-03-20 (Session 3, end of Wieczór 8)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -16,7 +16,8 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ Wieczór 5: WorldState schema complete (all 6 schemas in `server/src/GameRoom.ts`)
 - ✅ Wieczór 6: Body_A animations complete — 8 directions, grass background, scale ×1.5, cycling demo
 - ✅ Wieczór 7: Player movement synchronized via Colyseus — WASD/arrows, sends `move` every 50ms
-- ⏳ Wieczór 8: Render other players + interpolation — NEXT
+- ✅ Wieczór 8: Remote players rendered with interpolation — nickname labels, lerp 0.2
+- ⏳ Wieczór 9: Tool and attack animations — NEXT
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
@@ -90,6 +91,19 @@ Gameforge/
 - `move` — x, y, direction, animKey
 - `equip` — slot, itemId
 - `activeSlot` — slot index
+
+## Wieczór 8 additions
+
+### Changes
+- `server/src/GameRoom.ts` — added `player_add`, `player_move`, `player_remove` broadcasts; added `request_players` handler; `onLeave` broadcasts `player_remove`
+- `src/app/game/scenes/PlayScene.ts` — replaced schema callbacks with `setupMessageHandlers`; remote players use multi-sprite + lerp interpolation (factor 0.2); nickname labels at Y-52
+- `src/app/game/network/ColyseusClient.ts` — custom `joinOrCreate` workaround: calls matchmake HTTP endpoint directly and reformats response before `consumeSeatReservation` (protocol mismatch between colyseus.js@0.16 client and colyseus@0.17 server)
+
+### Key decisions
+- **Protocol mismatch colyseus@0.17 vs colyseus.js@0.16** — server 0.17 returns flat `{name, roomId, sessionId, processId}` from matchmake; client 0.16 expects `{room: {name, roomId, processId}, sessionId}`. Fixed by calling matchmake fetch ourselves and reformatting before `consumeSeatReservation`.
+- **Schema state not used on client** — `@colyseus/schema@4.x` (server) vs `@colyseus/schema@3.x` (client bundle) are incompatible. All state sync done via explicit broadcast messages instead.
+- **`request_players` on scene ready** — `players_init` sent on join arrives before `PlayScene.create()` registers handlers → message dropped. Fix: client sends `request_players` after handlers are set up; server responds with current player list.
+- **Remote player multi-sprite** — same pattern as local player: 6 sprites per texture, `setVisible` toggle. Stored in `RemotePlayer` interface with `x/y/targetX/targetY` for lerp.
 
 ## Wieczór 7 additions
 

@@ -118,6 +118,24 @@ export class GameRoom extends Room<GameRoomOptions> {
     player.y = 300 + Math.random() * 200;
     this.state.players.set(client.sessionId, player);
     console.log(`[GameRoom] ${player.nickname} joined (${client.sessionId})`);
+
+    // Send existing players to the new client
+    const existing: object[] = [];
+    this.state.players.forEach((p, sid) => {
+      if (sid !== client.sessionId) {
+        existing.push({ sessionId: sid, x: p.x, y: p.y, animKey: p.animKey, nickname: p.nickname });
+      }
+    });
+    client.send("players_init", existing);
+
+    // Notify everyone else about the new player
+    this.broadcast("player_add", {
+      sessionId: client.sessionId,
+      x: player.x,
+      y: player.y,
+      animKey: player.animKey,
+      nickname: player.nickname,
+    }, { except: client });
   }
 
   onLeave(client: Client, _code?: number) {
@@ -125,6 +143,7 @@ export class GameRoom extends Room<GameRoomOptions> {
     if (player) {
       player.isOnline = false;
     }
+    this.broadcast("player_remove", { sessionId: client.sessionId });
     console.log(`[GameRoom] ${client.sessionId} left`);
   }
 
@@ -195,6 +214,24 @@ export class GameRoom extends Room<GameRoomOptions> {
       player.y = data.y;
       player.direction = data.direction ?? player.direction;
       player.animKey = data.animKey ?? player.animKey;
+
+      // Broadcast to other clients
+      this.broadcast("player_move", {
+        sessionId: client.sessionId,
+        x: data.x,
+        y: data.y,
+        animKey: data.animKey,
+      }, { except: client });
+    });
+
+    this.onMessage("request_players", (client) => {
+      const existing: object[] = [];
+      this.state.players.forEach((p, sid) => {
+        if (sid !== client.sessionId) {
+          existing.push({ sessionId: sid, x: p.x, y: p.y, animKey: p.animKey, nickname: p.nickname });
+        }
+      });
+      client.send("players_init", existing);
     });
 
     this.onMessage("equip", (client, data: { slot: string; itemId: string }) => {
