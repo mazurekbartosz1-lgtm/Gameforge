@@ -313,6 +313,10 @@ Paste `SESSION_START_PROMPT.md` first, then use the Wieczór 6 prompt from `PLAN
 - `cors` property doesn't exist in `WebSocketTransport` options — used `getExpressApp()` instead
 - `@types/express` was missing from server devDependencies — caused TS7016 error on Express types import
 
+### Additional fixes after commit
+- Vercel was falling back to `ws://localhost:2567` because `NEXT_PUBLIC_COLYSEUS_URL` was not set in Vercel dashboard
+- Fixed by adding `NEXT_PUBLIC_COLYSEUS_URL=wss://gameforge-production-d7c8.up.railway.app` in Vercel → Settings → Environment Variables → Redeploy
+
 ### Next step
 **Wieczór 11** — Tiled editor + import Pixel Crawler Fairy Forest tileset.
 - Download and install Tiled Map Editor
