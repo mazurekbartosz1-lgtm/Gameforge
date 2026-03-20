@@ -118,6 +118,10 @@ export class PlayScene extends Scene {
     this.load.spritesheet("walk_side",  "/assets/player/walk_side.png",  cfg);
 
     preloadToolSprites(this);
+
+    this.load.image("tree_1", "/assets/resources/tree_1.png");
+    this.load.image("tree_2", "/assets/resources/tree_2.png");
+    this.load.image("tree_3", "/assets/resources/tree_3.png");
   }
 
   create() {
@@ -267,18 +271,7 @@ export class PlayScene extends Scene {
   // ── Resources ─────────────────────────────────────────────────────────────
 
   private createResourceTextures() {
-    // Tree: brown trunk + dark green canopy (Canvas 2D API — reliable in all renderers)
-    const treeTex = this.textures.createCanvas("res_tree", 32, 32)!;
-    const tc = treeTex.getContext();
-    tc.fillStyle = "#5a4a2a";
-    tc.fillRect(12, 24, 8, 8);
-    tc.fillStyle = "#1a5c1a";
-    tc.beginPath(); tc.arc(16, 14, 14, 0, Math.PI * 2); tc.fill();
-    tc.fillStyle = "#2e8b2e";
-    tc.beginPath(); tc.arc(11, 9, 8, 0, Math.PI * 2); tc.fill();
-    treeTex.refresh();
-
-    // Rock: gray with lighter highlight
+    // Rock: gray with lighter highlight (still procedural — no rock sprite yet)
     const rockTex = this.textures.createCanvas("res_rock", 32, 32)!;
     const rc = rockTex.getContext();
     rc.fillStyle = "#808080";
@@ -290,8 +283,25 @@ export class PlayScene extends Scene {
 
   private addResourceSprite(n: ResourceNodeData) {
     this.resourceData.set(n.id, n);
-    const tex = n.type === "tree" ? "res_tree" : "res_rock";
-    const sprite = this.add.image(n.x, n.y, tex).setDepth(2).setVisible(false);
+    let tex: string;
+    let scale: number;
+    let originY: number;
+    if (n.type === "tree") {
+      // Pick one of 3 tree models based on id hash for visual variety
+      const variant = (n.id.charCodeAt(n.id.length - 1) % 3) + 1;
+      tex = `tree_${variant}`;
+      scale = 0.25;
+      originY = 1.0; // anchor at base so trunk sits on ground
+    } else {
+      tex = "res_rock";
+      scale = 1.0;
+      originY = 0.5;
+    }
+    const sprite = this.add.image(n.x, n.y, tex)
+      .setOrigin(0.5, originY)
+      .setScale(scale)
+      .setDepth(2)
+      .setVisible(false);
     this.resourceSprites.set(n.id, sprite);
   }
 
