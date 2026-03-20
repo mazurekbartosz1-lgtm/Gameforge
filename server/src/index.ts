@@ -1,6 +1,6 @@
 import { Server } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
-import { GameRoom } from "./GameRoom";
+import { GameRoom } from "./GameRoom.js";
 
 const PORT = Number(process.env.PORT) || 2567;
 
