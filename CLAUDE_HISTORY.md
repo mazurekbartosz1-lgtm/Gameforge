@@ -135,6 +135,38 @@ Prompt is in PLAN.md under "Wieczór 4".
 
 ---
 
+## Session 6 — 2026-03-20 (continued)
+
+### What was done
+- Installed Phaser 3.90.0 in root `package.json`
+- Created `src/app/game/page.tsx` — Server Component, `#game-container` div 100vw×100vh
+- Created `src/app/game/GameLoader.tsx` — Client Component with `dynamic(..., { ssr: false })` (required by Next.js 16 Turbopack)
+- Created `src/app/game/PhaserGame.tsx` — Client Component, initializes `Phaser.Game` async in `useEffect`, cleanup on unmount
+- Created `src/app/game/GameScene.ts` — Phaser Scene loading Fairy Forest tileset, displaying frame 15 at scale ×8
+- Fixed texture loading: `this.textures.list` crashed with `toJSON` error — replaced with `Object.keys(this.textures.list)`
+- Fixed Phaser import: ESM build has no default export — used named imports `{ Scene, Game, AUTO }`
+- Copied `Tiles.png` to `public/assets/test/tiles.png` (spaces in original path caused 404)
+- Disabled Phaser audio: `audio: { noAudio: true }` in game config
+- Used frame grid debug view (80 frames, scale ×4) to identify usable tiles — frame 15 = solid grass
+- **Wieczór 4 COMPLETE ✅**
+
+### Decisions made
+- Phaser 3.90 ESM has no default export — always use named imports
+- `ssr: false` in `next/dynamic` must live in a Client Component (`GameLoader.tsx`), not a Server Component
+- Asset paths with spaces need to be copied to a flat path for reliable serving
+- Frame 15 of Fairy Forest `Tiles.png` = solid grass tile (chosen as base map tile)
+
+### Problems encountered
+- `this.textures.list` passed to `console.log` crashes — Phaser's internal texture object calls `toJSON` during serialization
+- Next.js 16 Turbopack rejects `ssr: false` in Server Components — required an extra Client Component wrapper
+
+### Next step
+**Wieczór 5** (WorldState Schema) already done in `server/src/GameRoom.ts`.
+**Skip to Wieczór 6** — Player character Body_A animations in 4 directions.
+Prompt is in PLAN.md under "Wieczór 6".
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,
