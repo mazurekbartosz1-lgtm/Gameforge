@@ -77,10 +77,15 @@ export class PlayScene extends Scene {
   private resourceSprites: Map<string, Phaser.GameObjects.Image> = new Map();
   private resourceData:   Map<string, ResourceNodeData>           = new Map();
 
+  // Tree footprint collision: tile "tx,ty" → resource id
+  private tileToResource = new Map<string, string>();
+
   private mapSeed = 42;
 
   // Infinite grass background (GPU-tiled, 1 draw call)
   private grassBg!: Phaser.GameObjects.TileSprite;
+  // Light forest zone overlay
+  private forestGfx!: Phaser.GameObjects.Graphics;
   // Debug grid
   private gridGfx!: Phaser.GameObjects.Graphics;
   // Fog of war
@@ -136,6 +141,9 @@ export class PlayScene extends Scene {
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(0);
+
+    // ── Light forest zone overlay ───────────────────────────────────────────
+    this.forestGfx = this.add.graphics().setDepth(1);
 
     // ── Debug grid ──────────────────────────────────────────────────────────
     this.gridGfx = this.add.graphics().setDepth(7);
@@ -265,8 +273,30 @@ export class PlayScene extends Scene {
 
     room.onMessage("resource_update", (data: { id: string; hp: number; isAlive: boolean }) => {
       const rd = this.resourceData.get(data.id);
-      if (rd) { rd.hp = data.hp; rd.isAlive = data.isAlive; }
+      if (!rd) return;
+      rd.hp = data.hp;
+      if (rd.isAlive && !data.isAlive) this.unregisterFootprint(rd); // tree felled
+      if (!rd.isAlive && data.isAlive) this.registerFootprint(rd);   // tree respawned
+      rd.isAlive = data.isAlive;
     });
+  }
+
+  // ── Forest zone overlay (light, shows biome) ──────────────────────────────
+
+  private drawForest() {
+    const cam = this.cameras.main;
+    const startX = Math.floor(cam.scrollX / TILE_SIZE) - 1;
+    const startY = Math.floor(cam.scrollY / TILE_SIZE) - 1;
+    const endX   = startX + Math.ceil(cam.width  / TILE_SIZE) + 2;
+    const endY   = startY + Math.ceil(cam.height / TILE_SIZE) + 2;
+    this.forestGfx.clear();
+    this.forestGfx.fillStyle(0x1a4a1a, 0.18);
+    for (let ty = startY; ty <= endY; ty++) {
+      for (let tx = startX; tx <= endX; tx++) {
+        if (isForestTile(tx, ty, this.mapSeed))
+          this.forestGfx.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+      }
+    }
   }
 
   // ── Resources ─────────────────────────────────────────────────────────────
@@ -275,8 +305,52 @@ export class PlayScene extends Scene {
     // Textures loaded via preload — nothing to generate procedurally
   }
 
+  /** Register the 7×9-tile footprint of a tree (or 1-tile footprint of a rock). */
+  private registerFootprint(rd: ResourceNodeData) {
+    const baseTX = Math.floor(rd.x / TILE_SIZE);
+    const baseTY = Math.floor(rd.y / TILE_SIZE);
+    if (rd.type === "tree") {
+      // 7 tiles wide (±3), 9 tiles tall (base tile + 8 above)
+      for (let dy = -8; dy <= 0; dy++)
+        for (let dx = -3; dx <= 3; dx++)
+          this.tileToResource.set(`${baseTX + dx},${baseTY + dy}`, rd.id);
+    } else {
+      this.tileToResource.set(`${baseTX},${baseTY}`, rd.id);
+    }
+  }
+
+  /** Remove footprint when a resource dies. */
+  private unregisterFootprint(rd: ResourceNodeData) {
+    const baseTX = Math.floor(rd.x / TILE_SIZE);
+    const baseTY = Math.floor(rd.y / TILE_SIZE);
+    if (rd.type === "tree") {
+      for (let dy = -8; dy <= 0; dy++)
+        for (let dx = -3; dx <= 3; dx++)
+          this.tileToResource.delete(`${baseTX + dx},${baseTY + dy}`);
+    } else {
+      this.tileToResource.delete(`${baseTX},${baseTY}`);
+    }
+  }
+
+  /** Check player's adjacent tiles (4 directions) for a harvestable resource. */
+  private findAdjacentResource(tileX: number, tileY: number): string | null {
+    const checks = [
+      [tileX,     tileY    ],
+      [tileX + 1, tileY    ],
+      [tileX - 1, tileY    ],
+      [tileX,     tileY + 1],
+      [tileX,     tileY - 1],
+    ];
+    for (const [tx, ty] of checks) {
+      const id = this.tileToResource.get(`${tx},${ty}`);
+      if (id) return id;
+    }
+    return null;
+  }
+
   private addResourceSprite(n: ResourceNodeData) {
     this.resourceData.set(n.id, n);
+    if (n.isAlive) this.registerFootprint(n);
     let sprite: Phaser.GameObjects.Image;
     if (n.type === "tree") {
       // Pick one of 8 tree variants (4 cols × 2 rows in spritesheet)
@@ -411,7 +485,8 @@ export class PlayScene extends Scene {
       const tileX = Math.floor(newPx / TILE_SIZE);
       const tileY = Math.floor(newPy / TILE_SIZE);
 
-      if (!isForestTile(tileX, tileY, this.mapSeed)) {
+      // Blocked only by living tree footprints (not terrain hash)
+      if (!this.tileToResource.has(`${tileX},${tileY}`)) {
         this.px = newPx;
         this.py = newPy;
       }
@@ -435,7 +510,8 @@ export class PlayScene extends Scene {
     // Background — sync tile UVs with camera scroll so grass appears to move
     this.grassBg.setTilePosition(this.cameras.main.scrollX, this.cameras.main.scrollY);
 
-    // Grid + fog — redrawn every frame (only visible tiles)
+    // Overlays — redrawn every frame (only visible tiles)
+    this.drawForest();
     this.drawGrid();
     this.drawFog(tileX, tileY);
 
@@ -464,29 +540,23 @@ export class PlayScene extends Scene {
       remote.label.setVisible(inVision);
     });
 
-    // Resource visibility + harvest on E key
+    // Resource visibility — show only within vision radius
     const visionPxSq = (VISION_RADIUS * TILE_SIZE) ** 2;
-    const harvestRangeSq = (3 * TILE_SIZE) ** 2;
-    let nearestId: string | null = null;
-    let nearestDistSq = Infinity;
-
     this.resourceData.forEach((rd, id) => {
       const sprite = this.resourceSprites.get(id);
       if (!sprite) return;
       const dx = rd.x - this.px;
       const dy = rd.y - this.py;
-      const distSq = dx * dx + dy * dy;
-      const inVision = distSq <= visionPxSq;
-      sprite.setVisible(rd.isAlive && inVision);
-      if (rd.isAlive && inVision && distSq <= harvestRangeSq && distSq < nearestDistSq) {
-        nearestDistSq = distSq;
-        nearestId = id;
-      }
+      sprite.setVisible(rd.isAlive && (dx * dx + dy * dy) <= visionPxSq);
     });
 
-    if (eJustDown && nearestId && !this.isActionPlaying) {
-      this.room?.send("harvest", { id: nearestId });
-      this.playActionAnim("collect");
+    // E key: harvest tree/rock adjacent to player (tile-based detection)
+    if (eJustDown && !this.isActionPlaying) {
+      const harvestId = this.findAdjacentResource(tileX, tileY);
+      if (harvestId) {
+        this.room?.send("harvest", { id: harvestId });
+        this.playActionAnim("collect");
+      }
     }
 
     // Colyseus send (throttled)

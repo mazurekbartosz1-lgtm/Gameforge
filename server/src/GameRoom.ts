@@ -238,7 +238,7 @@ export class GameRoom extends Room<GameRoomOptions> {
     let trees = 0, rocks = 0;
 
     const RANGE = 40;
-    const TREE_STEP = 5; // one tree candidate per 5x5 tile cell
+    const TREE_STEP = 8; // tree footprint is 7×9 tiles — 8-tile step gives ~1 tile gap
 
     // Trees — grid-based placement in forest, one per 5-tile cell with random offset
     for (let gy = -RANGE; gy <= RANGE; gy += TREE_STEP) {
