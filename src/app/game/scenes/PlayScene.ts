@@ -317,8 +317,8 @@ export class PlayScene extends Scene {
     const baseTX = Math.floor(rd.x / TILE_SIZE);
     const baseTY = Math.floor(rd.y / TILE_SIZE);
     if (rd.type === "tree") {
-      // 7 tiles wide (±3), 11 tiles tall — matches 184px sprite height
-      for (let dy = -10; dy <= 0; dy++)
+      // 7 tiles wide (±3), 12 tiles tall — covers full 184px sprite + 8px margin
+      for (let dy = -11; dy <= 0; dy++)
         for (let dx = -3; dx <= 3; dx++)
           this.tileToResource.set(`${baseTX + dx},${baseTY + dy}`, rd.id);
     } else {
@@ -334,7 +334,7 @@ export class PlayScene extends Scene {
     const baseTX = Math.floor(rd.x / TILE_SIZE);
     const baseTY = Math.floor(rd.y / TILE_SIZE);
     if (rd.type === "tree") {
-      for (let dy = -10; dy <= 0; dy++)
+      for (let dy = -11; dy <= 0; dy++)
         for (let dx = -3; dx <= 3; dx++)
           this.tileToResource.delete(`${baseTX + dx},${baseTY + dy}`);
     } else {
@@ -365,8 +365,8 @@ export class PlayScene extends Scene {
     if (n.isAlive) this.registerFootprint(n);
     let sprite: Phaser.GameObjects.Image;
     if (n.type === "tree") {
-      // Pick one of 8 tree variants (4 cols × 2 rows in spritesheet)
-      const variant = n.id.charCodeAt(n.id.length - 1) % 8;
+      // Only frames 0 (green) and 1 (yellow-green) — no bare/winter trees
+      const variant = n.id.charCodeAt(n.id.length - 1) % 2;
       sprite = this.add.image(n.x, n.y, "tree_sheet", variant)
         .setOrigin(0.5, 1.0)   // anchor at trunk base
         .setScale(1.0)          // natural pixel size

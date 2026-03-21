@@ -237,17 +237,17 @@ export class GameRoom extends Room<GameRoomOptions> {
     const rng = mulberry32(seed ^ 0xDEADBEEF);
     let trees = 0, rocks = 0;
 
-    const RANGE = 60;
-    const TREE_STEP = 12; // tree is 7×11 tiles tall — 12-tile step prevents overlap
+    const RANGE = 80;
+    const TREE_STEP = 14; // footprint is 7×12 tiles — 14-tile step guarantees 2-tile gap
+    const MAX_OFFSET = 2; // small jitter so trees aren't a perfect grid
 
-    // Trees — grid-based placement in forest, one per 5-tile cell with random offset
+    // Trees — fixed grid with tiny offset; offset << TREE_STEP prevents overlap
     for (let gy = -RANGE; gy <= RANGE; gy += TREE_STEP) {
       for (let gx = -RANGE; gx <= RANGE; gx += TREE_STEP) {
-        // Random offset within cell so trees aren't in a perfect grid
         const h1 = terrainHash(gx, gy, seed ^ 0x1111);
         const h2 = terrainHash(gx, gy, seed ^ 0x2222);
-        const wx = gx + Math.floor(h1 * TREE_STEP);
-        const wy = gy + Math.floor(h2 * TREE_STEP);
+        const wx = gx + Math.floor(h1 * MAX_OFFSET);
+        const wy = gy + Math.floor(h2 * MAX_OFFSET);
         if (!isForestTile(wx, wy, seed)) continue;
         const node = new ResourceNode();
         node.id = `tree_${trees}`;
