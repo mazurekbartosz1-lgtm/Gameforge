@@ -79,8 +79,8 @@ export class PlayScene extends Scene {
   private resourceSprites: Map<string, Phaser.GameObjects.Image> = new Map();
   private resourceData:   Map<string, ResourceNodeData>           = new Map();
 
-  // Tree footprint collision: tile "tx,ty" → resource id
-  private tileToResource = new Map<string, string>();
+  // Tree footprint collision: tile "tx,ty" → set of resource ids (supports overlapping sprites)
+  private tileToResources = new Map<string, Set<string>>();
 
   // Client-side infinite resource generation
   private generatedTreeChunks = new Set<string>();
@@ -108,6 +108,10 @@ export class PlayScene extends Scene {
   private playersOnlineText!: Phaser.GameObjects.Text;
   private sessionIdText!: Phaser.GameObjects.Text;
   private playerCount = 1;
+
+  // Inventory
+  private inventory = new Map<string, number>();
+  private hudTexts  = new Map<string, Phaser.GameObjects.Text>();
 
   constructor() {
     super({ key: "PlayScene" });
@@ -209,6 +213,9 @@ export class PlayScene extends Scene {
       .text(792, 8, this.room?.sessionId ?? "—", { fontSize: "10px", color: "#aaaaaa", backgroundColor: "#00000066", padding: { x: 4, y: 2 } })
       .setOrigin(1, 0).setScrollFactor(0).setDepth(20);
 
+    // ── Inventory HUD ───────────────────────────────────────────────────────
+    this.initInventoryHud();
+
     // ── Multiplayer handlers ────────────────────────────────────────────────
     if (this.room) this.setupMessageHandlers(this.room);
     else {
@@ -296,49 +303,87 @@ export class PlayScene extends Scene {
       rd.isAlive = data.isAlive;
     });
 
-    // Client-side resource synchronisation (request after handlers are registered)
-    let deadTreesReady = false;
-    let deadRocksReady = false;
-    const tryInitialGenerate = () => {
-      if (!deadTreesReady || !deadRocksReady) return;
-      this.generateTreeChunksAround(0, 0);
-      this.generateRockChunksAround(0, 0);
-    };
-
+    // Trees: wait for dead list before initial generation
     room.onMessage("dead_trees_init", (ids: string[]) => {
       ids.forEach((id) => this.deadTrees.add(id));
-      deadTreesReady = true;
-      tryInitialGenerate();
+      this.generateTreeChunksAround(0, 0);
     });
     room.send("request_dead_trees", {});
-
-    room.onMessage("dead_rocks_init", (ids: string[]) => {
-      ids.forEach((id) => this.deadRocks.add(id));
-      deadRocksReady = true;
-      tryInitialGenerate();
-    });
-    room.send("request_dead_rocks", {});
 
     room.onMessage("tree_dead", (data: { id: string }) => {
       this.deadTrees.add(data.id);
       const rd = this.resourceData.get(data.id);
-      if (rd && rd.isAlive) { rd.isAlive = false; this.unregisterFootprint(rd); }
-    });
-    room.onMessage("tree_respawn", (data: { id: string }) => {
-      this.deadTrees.delete(data.id);
-      const rd = this.resourceData.get(data.id);
-      if (rd && !rd.isAlive) { rd.isAlive = true; rd.hp = rd.maxHp; this.registerFootprint(rd); }
+      if (rd && rd.isAlive) { rd.isAlive = false; this.unregisterFootprint(rd); this.killResourceSprite(data.id); }
     });
 
     room.onMessage("rock_dead", (data: { id: string }) => {
       this.deadRocks.add(data.id);
       const rd = this.resourceData.get(data.id);
-      if (rd && rd.isAlive) { rd.isAlive = false; this.unregisterFootprint(rd); }
+      if (rd && rd.isAlive) { rd.isAlive = false; this.unregisterFootprint(rd); this.killResourceSprite(data.id); }
     });
-    room.onMessage("rock_respawn", (data: { id: string }) => {
-      this.deadRocks.delete(data.id);
-      const rd = this.resourceData.get(data.id);
-      if (rd && !rd.isAlive) { rd.isAlive = true; rd.hp = rd.maxHp; this.registerFootprint(rd); }
+
+    room.onMessage("harvest_reward", (data: { drops: Array<{ item: string; qty: number }> }) => {
+      this.addItems(data.drops);
+    });
+  }
+
+  // ── Inventory ─────────────────────────────────────────────────────────────
+
+  private initInventoryHud() {
+    const ITEMS: Array<{ key: string; label: string; color: string }> = [
+      { key: "wood",  label: "Wood",  color: "#c8a46e" },
+      { key: "stone", label: "Stone", color: "#aaaaaa" },
+    ];
+    const slotW  = 80;
+    const totalW = ITEMS.length * slotW + (ITEMS.length - 1) * 8;
+    let x = (800 - totalW) / 2;
+
+    for (const { key, label, color } of ITEMS) {
+      const t = this.add.text(x + slotW / 2, 576, `${label}: 0`, {
+        fontSize: "13px",
+        color,
+        backgroundColor: "#000000aa",
+        padding: { x: 8, y: 5 },
+        stroke: "#000000",
+        strokeThickness: 1,
+      }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(20);
+      this.hudTexts.set(key, t);
+      x += slotW + 8;
+    }
+  }
+
+  private updateInventoryHud() {
+    this.hudTexts.forEach((text, key) => {
+      const count = this.inventory.get(key) ?? 0;
+      const label = key.charAt(0).toUpperCase() + key.slice(1);
+      text.setText(`${label}: ${count}`);
+    });
+  }
+
+  private addItems(drops: Array<{ item: string; qty: number }>) {
+    const parts: string[] = [];
+    for (const { item, qty } of drops) {
+      this.inventory.set(item, (this.inventory.get(item) ?? 0) + qty);
+      parts.push(`+${qty} ${item.charAt(0).toUpperCase() + item.slice(1)}`);
+    }
+    this.updateInventoryHud();
+    if (parts.length) this.showPickupText(this.px, this.py - 50, parts.join("  "));
+  }
+
+  private showPickupText(x: number, y: number, msg: string) {
+    const t = this.add.text(x, y, msg, {
+      fontSize: "12px",
+      color: "#ffdd44",
+      stroke: "#000000",
+      strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(15);
+    this.tweens.add({
+      targets: t,
+      y: y - 40,
+      alpha: 0,
+      duration: 1400,
+      ease: "Power1",
+      onComplete: () => t.destroy(),
     });
   }
 
@@ -368,36 +413,64 @@ export class PlayScene extends Scene {
     // Textures loaded via preload — nothing to generate procedurally
   }
 
+  /** Destroy a resource sprite immediately and remove it from the map. */
+  private killResourceSprite(id: string) {
+    const sprite = this.resourceSprites.get(id);
+    if (sprite) {
+      sprite.destroy();
+      this.resourceSprites.delete(id);
+    }
+  }
+
   /** Register the footprint of a resource for collision + harvest detection. */
   private registerFootprint(rd: ResourceNodeData) {
     const baseTX = Math.floor(rd.x / TILE_SIZE);
     const baseTY = Math.floor(rd.y / TILE_SIZE);
+    const add = (key: string) => {
+      let s = this.tileToResources.get(key);
+      if (!s) { s = new Set(); this.tileToResources.set(key, s); }
+      s.add(rd.id);
+    };
     if (rd.type === "tree") {
-      // Full sprite footprint: 7 wide (±3), 10 tall (dy -9..0)
       for (let dy = -9; dy <= 0; dy++)
         for (let dx = -3; dx <= 3; dx++)
-          this.tileToResource.set(`${baseTX + dx},${baseTY + dy}`, rd.id);
+          add(`${baseTX + dx},${baseTY + dy}`);
     } else {
-      // Rock: 3×3 tiles (scale 3 → 48×48px = 3 tiles)
       for (let dy = 0; dy <= 2; dy++)
         for (let dx = 0; dx <= 2; dx++)
-          this.tileToResource.set(`${baseTX + dx},${baseTY + dy}`, rd.id);
+          add(`${baseTX + dx},${baseTY + dy}`);
     }
   }
 
-  /** Remove footprint when a resource dies. */
+  /** Remove footprint when a resource dies. Tiles shared with other resources stay intact. */
   private unregisterFootprint(rd: ResourceNodeData) {
     const baseTX = Math.floor(rd.x / TILE_SIZE);
     const baseTY = Math.floor(rd.y / TILE_SIZE);
+    const remove = (key: string) => {
+      const s = this.tileToResources.get(key);
+      if (!s) return;
+      s.delete(rd.id);
+      if (s.size === 0) this.tileToResources.delete(key);
+    };
     if (rd.type === "tree") {
       for (let dy = -9; dy <= 0; dy++)
         for (let dx = -3; dx <= 3; dx++)
-          this.tileToResource.delete(`${baseTX + dx},${baseTY + dy}`);
+          remove(`${baseTX + dx},${baseTY + dy}`);
     } else {
       for (let dy = 0; dy <= 2; dy++)
         for (let dx = 0; dx <= 2; dx++)
-          this.tileToResource.delete(`${baseTX + dx},${baseTY + dy}`);
+          remove(`${baseTX + dx},${baseTY + dy}`);
     }
+  }
+
+  /** First alive resource id covering this tile, or null. */
+  private aliveResourceAt(tileKey: string): string | null {
+    const s = this.tileToResources.get(tileKey);
+    if (!s) return null;
+    for (const id of s) {
+      if (this.resourceData.get(id)?.isAlive) return id;
+    }
+    return null;
   }
 
   /** Spawn tree sprites for all TREE_STEP-chunks within vision radius of (tileX, tileY). */
@@ -452,21 +525,34 @@ export class PlayScene extends Scene {
 
   /** Check player's adjacent tiles (4 directions) for a harvestable resource. */
   private findAdjacentResource(tileX: number, tileY: number): string | null {
-    const checks = [
-      [tileX,     tileY    ],
-      [tileX + 1, tileY    ],
-      [tileX - 1, tileY    ],
-      [tileX,     tileY + 1],
-      [tileX,     tileY - 1],
-    ];
-    for (const [tx, ty] of checks) {
-      const id = this.tileToResource.get(`${tx},${ty}`);
-      if (id) return id;
+    // Use pixel-based harvest rect in the facing direction so the check accounts
+    // for the player's collision box offset (PLAYER_HH=20px > 1 tile, hence
+    // simple ±1 tile misses footprints when approaching from above/below).
+    const REACH = 48; // px reach forward
+    const WIDE  = 24; // px half-width of harvest arc
+
+    let x0: number, x1: number, y0: number, y1: number;
+    switch (this.direction) {
+      case "down":  x0 = this.px - WIDE; x1 = this.px + WIDE; y0 = this.py + PLAYER_HH; y1 = this.py + PLAYER_HH + REACH; break;
+      case "up":    x0 = this.px - WIDE; x1 = this.px + WIDE; y0 = this.py - PLAYER_HH - REACH; y1 = this.py - PLAYER_HH; break;
+      case "right": x0 = this.px + PLAYER_HW; x1 = this.px + PLAYER_HW + REACH; y0 = this.py - WIDE; y1 = this.py + WIDE; break;
+      case "left":  x0 = this.px - PLAYER_HW - REACH; x1 = this.px - PLAYER_HW; y0 = this.py - WIDE; y1 = this.py + WIDE; break;
     }
+    const minTX = Math.floor(x0! / TILE_SIZE);
+    const maxTX = Math.floor(x1! / TILE_SIZE);
+    const minTY = Math.floor(y0! / TILE_SIZE);
+    const maxTY = Math.floor(y1! / TILE_SIZE);
+
+    for (let ty = minTY; ty <= maxTY; ty++)
+      for (let tx = minTX; tx <= maxTX; tx++) {
+        const id = this.aliveResourceAt(`${tx},${ty}`);
+        if (id) return id;
+      }
     return null;
   }
 
   private addResourceSprite(n: ResourceNodeData) {
+    if (this.resourceSprites.has(n.id)) return; // already exists — skip to avoid orphaned sprites
     this.resourceData.set(n.id, n);
     if (n.isAlive) this.registerFootprint(n);
     let sprite: Phaser.GameObjects.Image;
@@ -478,7 +564,7 @@ export class PlayScene extends Scene {
       sprite = this.add.image(n.x, n.y + 32, "tree_sheet", variant)
         .setOrigin(0.5, 1.0)
         .setScale(1.0)
-        .setDepth(2);
+        .setDepth(3);
       sprite.setCrop(0, 0, 112, 152); // 184 - 32 = 152px visible
     } else {
       // Rock: scale 3 → 48×48px = 3×3 tiles. Frame 18 = row 1 col 5 (most opaque pixels).
@@ -542,7 +628,7 @@ export class PlayScene extends Scene {
     this.collisionGfx.fillStyle(0x660000, 0.35);
     for (let ty = startY; ty <= endY; ty++)
       for (let tx = startX; tx <= endX; tx++)
-        if (this.tileToResource.has(`${tx},${ty}`))
+        if (this.aliveResourceAt(`${tx},${ty}`))
           this.collisionGfx.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
 
     // Cyan rectangle — player collision box
@@ -714,13 +800,21 @@ export class PlayScene extends Scene {
         if (harvestId.startsWith("tree_")) {
           this.deadTrees.add(harvestId);
           const rd = this.resourceData.get(harvestId);
-          if (rd && rd.isAlive) { rd.isAlive = false; this.unregisterFootprint(rd); }
+          if (rd && rd.isAlive) { rd.isAlive = false; this.unregisterFootprint(rd); this.killResourceSprite(harvestId); }
         } else if (harvestId.startsWith("rock_")) {
           this.deadRocks.add(harvestId);
           const rd = this.resourceData.get(harvestId);
-          if (rd && rd.isAlive) { rd.isAlive = false; this.unregisterFootprint(rd); }
+          if (rd && rd.isAlive) { rd.isAlive = false; this.unregisterFootprint(rd); this.killResourceSprite(harvestId); }
         }
-        this.room?.send("harvest", { id: harvestId });
+        if (this.room) {
+          this.room.send("harvest", { id: harvestId });
+        } else {
+          // Offline mode: give items locally
+          const isTree = harvestId.startsWith("tree_");
+          const item   = isTree ? "wood" : "stone";
+          const qty    = isTree ? 2 + Math.floor(Math.random() * 3) : 1 + Math.floor(Math.random() * 2);
+          this.addItems([{ item, qty }]);
+        }
         this.playActionAnim("collect");
       }
     }
@@ -752,7 +846,7 @@ export class PlayScene extends Scene {
     const maxTY = Math.floor((py + PLAYER_HH - 1) / TILE_SIZE);
     for (let ty = minTY; ty <= maxTY; ty++)
       for (let tx = minTX; tx <= maxTX; tx++)
-        if (this.tileToResource.has(`${tx},${ty}`)) return true;
+        if (this.aliveResourceAt(`${tx},${ty}`)) return true;
     return false;
   }
 }

@@ -103,9 +103,8 @@ const SANITY_DAY_REGEN = 0.5 / (TICK_RATE / 1000);
 export class GameRoom extends Room<GameRoomOptions> {
   maxClients = 16;
 
-  /** Client-generated resources harvested by players: id → respawn timestamp. */
+  /** Client-generated trees harvested by players (never respawn). */
   private deadTrees = new Map<string, number>();
-  private deadRocks = new Map<string, number>();
 
   onCreate(_options: any) {
     const state = new WorldState();
@@ -169,8 +168,6 @@ export class GameRoom extends Room<GameRoomOptions> {
     this.updateWorldTime(now);
     this.drainHungerAndSanity();
     this.respawnNodes(now);
-    // Trees do not respawn (permanent harvest)
-    this.respawnDeadRocks(now);
   }
 
   private updateWorldTime(now: number) {
@@ -195,15 +192,6 @@ export class GameRoom extends Room<GameRoomOptions> {
       // Hunger hurts HP
       if (player.hunger <= 0) {
         player.hp = Math.max(0, player.hp - 1);
-      }
-    });
-  }
-
-  private respawnDeadRocks(now: number) {
-    this.deadRocks.forEach((respawnAt, id) => {
-      if (now >= respawnAt) {
-        this.deadRocks.delete(id);
-        this.broadcast("rock_respawn", { id });
       }
     });
   }
@@ -295,22 +283,26 @@ export class GameRoom extends Room<GameRoomOptions> {
       client.send("dead_trees_init", Array.from(this.deadTrees.keys()));
     });
 
-    this.onMessage("request_dead_rocks", (client) => {
-      client.send("dead_rocks_init", Array.from(this.deadRocks.keys()));
-    });
-
     this.onMessage("harvest", (client, data: { id: string }) => {
       const player = this.state.players.get(client.sessionId);
       if (data.id.startsWith("tree_")) {
         if (this.deadTrees.has(data.id)) return;
-        this.deadTrees.set(data.id, Date.now() + 60_000);
+        this.deadTrees.set(data.id, 0); // 0 = never respawn
         this.broadcast("tree_dead", { id: data.id });
-        console.log(`[GameRoom] ${player?.nickname ?? client.sessionId} harvested ${data.id}`);
+        const qty = 2 + Math.floor(Math.random() * 3); // 2–4 wood
+        if (player) {
+          for (let i = 0; i < qty; i++) player.inventory.push("wood");
+        }
+        client.send("harvest_reward", { drops: [{ item: "wood", qty }] });
+        console.log(`[GameRoom] ${player?.nickname ?? client.sessionId} harvested ${data.id} → ${qty} wood`);
       } else if (data.id.startsWith("rock_")) {
-        if (this.deadRocks.has(data.id)) return;
-        this.deadRocks.set(data.id, Date.now() + 60_000);
         this.broadcast("rock_dead", { id: data.id });
-        console.log(`[GameRoom] ${player?.nickname ?? client.sessionId} harvested ${data.id}`);
+        const qty = 1 + Math.floor(Math.random() * 2); // 1–2 stone
+        if (player) {
+          for (let i = 0; i < qty; i++) player.inventory.push("stone");
+        }
+        client.send("harvest_reward", { drops: [{ item: "stone", qty }] });
+        console.log(`[GameRoom] ${player?.nickname ?? client.sessionId} harvested ${data.id} → ${qty} stone`);
       }
     });
   }

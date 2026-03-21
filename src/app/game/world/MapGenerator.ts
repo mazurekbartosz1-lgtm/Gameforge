@@ -3,7 +3,7 @@
 
 export const TILE_SIZE  = 16; // px per tile
 export const CHUNK_SIZE = 16; // tiles per chunk side (used for future chunk management)
-export const TREE_STEP  =  7; // tiles between tree grid cells — ~2.5-tile crown overlap (sprite 9.5h tall)
+export const TREE_STEP  = 10; // tiles between tree grid cells — sprite 7w×9.5h, occasional ≤1.5-tile overlap
 export const ROCK_STEP  =  3; // tiles between rock grid cells — ~6× denser than step=5
 
 const SPAWN_CLEAR_RADIUS = 16; // tiles around (0,0) guaranteed to be open (smaller = forest starts sooner)
@@ -23,7 +23,7 @@ function terrainHash(wx: number, wy: number, seed: number): number {
 
 // ── Tree chunks ──────────────────────────────────────────────────────────────
 
-const TREE_MAX_OFFSET = 1; // no jitter at dense spacing — floor(h*1)=0, trees on exact grid
+const TREE_MAX_OFFSET = 3; // jitter 0–2 tiles → occasional 1–1.5-tile overlap when neighbors shift toward each other
 
 /**
  * Returns the world-tile position of the tree in grid-chunk (chunkX, chunkY),
@@ -44,7 +44,7 @@ export function treeAtChunk(chunkX: number, chunkY: number, seed: number): { wx:
 // ── Rock chunks ──────────────────────────────────────────────────────────────
 
 const ROCK_MAX_OFFSET = 1; // no jitter at step=3 — floor(h*1)=0, rocks on exact grid
-const ROCK_DENSITY    = 0.75; // 75% of open chunks carry a rock
+const ROCK_DENSITY    = 0.375; // ~37% of open chunks carry a rock (half of original 75%)
 
 /**
  * Returns the world-tile (top-left) position of a rock in grid-chunk (chunkX, chunkY),

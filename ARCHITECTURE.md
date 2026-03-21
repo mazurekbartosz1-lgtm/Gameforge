@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-21 (Session 4, end of Wieczór 14)
+2026-03-21 (Session 5, end of Wieczór 15)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -22,7 +22,8 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ Wieczór 11+12: Procedural infinite world — hash-based terrain, TileSprite grass, forest overlay
 - ✅ Wieczór 13: Fog of war — per-tile discovered Set, VISION_RADIUS=60 tiles
 - ✅ Wieczór 14: Resource nodes — client-side chunk generation, tree/rock sprites, dead-resource sync, box collision
-- ⏳ Wieczór 15: Gameplay polish — collision tuning, inventory, resource drop items
+- ✅ Wieczór 15: Gameplay polish — inventory HUD, harvest detection fix, sprite destroy-on-death, overlapping footprints fix, tree/rock tuning
+- ⏳ Wieczór 16: Camera deadzone + minimap
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
@@ -97,10 +98,45 @@ Gameforge/
 - `equip` — slot, itemId
 - `activeSlot` — slot index
 
+## Wieczór 15 additions
+
+### Inventory HUD
+- `PlayScene.ts` — `inventory: Map<string,number>`, `hudTexts: Map<string,Text>`
+- `initInventoryHud()` — Wood/Stone labels at bottom-center, scrollFactor 0, depth 20
+- `addItems(drops)` — updates counts + shows floating pickup text (yellow, tween up 40px, fade 1400ms)
+- `harvest_reward` message from server triggers `addItems`; offline fallback gives items locally
+
+### Harvest detection fix
+- `findAdjacentResource` rewritten to pixel-based directional rectangle (REACH=48px, WIDE=24px)
+- Fixes up/down harvest not working — PLAYER_HH=20px > 1 tile so ±1 tile check was too short
+
+### Sprite destroy-on-death
+- Dead resource sprites are now **destroyed** via `killResourceSprite(id)` instead of `setVisible(false)`
+- Eliminates stale-sprite artifacts when harvesting
+
+### Overlapping footprints fix
+- `tileToResource: Map<string,string>` replaced with `tileToResources: Map<string,Set<string>>`
+- Each tile tracks all resources covering it; `unregisterFootprint` only removes the dying resource's id
+- `aliveResourceAt(key)` returns first alive resource id in a tile's set
+- Fixes: harvesting one tree from an overlapping pair no longer empties the other's footprint
+
+### Tree/rock tuning
+- `TREE_STEP` raised from 7 → 10 (fewer trees, more space between)
+- `TREE_MAX_OFFSET` raised from 1 → 3 (jitter 0–2 tiles, occasional 1–1.5 tile overlap)
+- Tree depth raised from 2 → 3 (renders above rocks)
+- `ROCK_DENSITY` lowered from 0.75 → 0.375 (half as many rocks)
+- Rocks never respawn — `deadRocks` set tracks harvested ids permanently
+- Server: removed `deadRocks` map and `respawnDeadRocks`; rock harvest still broadcasts `rock_dead`
+
+### /objects page (enemy animations)
+- Auto-detect frame size for generic `-sheet` files (sentinel `{w:0,h:0}` → use `dim.h`)
+- Enemies grouped by character name not animation type (extended `SUB_FOLDER` regex)
+- `GroupPreview` capped to 72×72px; `AnimGroupRow` shows 4-direction squares per animation
+
 ## Wieczór 14 additions
 
 ### New files / major changes
-- `src/app/game/world/MapGenerator.ts` — rewritten: `treeAtChunk(cx,cy,seed)`, `rockAtChunk(cx,cy,seed)`, `isForestTile(wx,wy,seed)`, constants `TREE_STEP=7`, `ROCK_STEP=3`, `FOREST_THRESHOLD=0.494`, `SPAWN_CLEAR_RADIUS=16`, `SMOOTH_RADIUS=10`
+- `src/app/game/world/MapGenerator.ts` — rewritten: `treeAtChunk(cx,cy,seed)`, `rockAtChunk(cx,cy,seed)`, `isForestTile(wx,wy,seed)`, constants `TREE_STEP=10`, `ROCK_STEP=3`, `FOREST_THRESHOLD=0.494`, `SPAWN_CLEAR_RADIUS=16`, `SMOOTH_RADIUS=10`
 - `src/app/game/scenes/PlayScene.ts` — client-side infinite chunk generation, tree/rock sprites, footprint collision, dead-resource sync, box collision with sliding, debug overlay
 
 ### Client-side chunk generation

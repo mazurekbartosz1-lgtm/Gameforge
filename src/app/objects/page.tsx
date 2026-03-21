@@ -29,7 +29,7 @@ interface AssetGroup {
 
 // Folders that hold animation sheets but are NOT the character name (go one level up)
 const SUB_FOLDER =
-  /^(Animations|Idle_Base|Run_Base|Walk_Base|Death_Base|Hit_Base|Carry_Base|Collect_Base|Watering_Base|Fishing_Base|Attack_\d+_Base)$/;
+  /^(Animations|Idle|Run|Walk|Death|Hit|Attack|Carry|Collect|Idle_Base|Run_Base|Walk_Base|Death_Base|Hit_Base|Carry_Base|Collect_Base|Watering_Base|Fishing_Base|Attack_\d+_Base)$/;
 
 function detectPack(url: string): string {
   if (url.includes("Castle"))       return "Castle";
@@ -67,8 +67,11 @@ function isAnimSheet(url: string, name: string): boolean {
 }
 
 function detectFrameSize(url: string): { w: number; h: number } {
-  if (url.includes("/player/") || url.includes("Body_A/Animations") || url.includes("/actions/") || url.includes("A_Hunter/")) return { w: 64, h: 64 };
   if (url.includes("tree_sheet")) return { w: 112, h: 184 };
+  if (url.includes("/player/") || url.includes("/actions/")) return { w: 64, h: 64 };
+  const name = url.split("/").pop()?.toLowerCase() ?? "";
+  // For generic animation sheets: return sentinel {0,0} → auto-detect from image height at render time
+  if (name.includes("-sheet")) return { w: 0, h: 0 };
   return { w: 16, h: 16 };
 }
 
@@ -108,11 +111,33 @@ function getGroupInfo(url: string): { groupKey: string; groupName: string } {
   return { groupKey: `${pack}:${parent}`, groupName: parent };
 }
 
+// Strip directional suffix to get animation base name (e.g. "Idle_Down-Sheet.png" → "Idle")
+function getAnimBase(name: string): string {
+  return name
+    .replace(/\.png$/i, "")
+    .replace(/-Sheet$/i, "")
+    .replace(/[_-]*(Down|Side|Up|Top)$/i, "")
+    .trim() || name.replace(/\.png$/i, "");
+}
+
+// Detect which direction a sheet covers
+function getAnimDir(name: string): "down" | "side" | "up" | "none" {
+  const n = name.toLowerCase().replace(/\.png$/, "").replace(/-sheet$/, "");
+  if (/_down$|-down$/.test(n)) return "down";
+  if (/_side$|-side$/.test(n)) return "side";
+  if (/_up$|-up$|_top$|-top$/.test(n)) return "up";
+  return "none";
+}
+
 function getAnimLabel(url: string): string {
   const parts    = url.split("/");
   const filename = parts[parts.length - 1].replace(".png", "").replace(/-Sheet$/i, "");
   const parent   = parts[parts.length - 2] ?? "";
-  if (SUB_FOLDER.test(parent)) return `${parent.replace(/_Base$/, "")} › ${filename}`;
+  if (SUB_FOLDER.test(parent)) {
+    const label = parent.replace(/_Base$/, "");
+    // avoid "Idle › Idle" when folder name === file name
+    return filename.toLowerCase() === label.toLowerCase() ? label : `${label} › ${filename}`;
+  }
   return filename;
 }
 
@@ -177,8 +202,9 @@ function AnimatedSprite({
 }) {
   const dim = useImageDim(url);
   const [frame, setFrame] = useState(0);
-  const fW   = Math.max(1, frameW);
-  const fH   = Math.max(1, frameH);
+  // frameW===0 → auto-detect: use image height as frame size (square frames, single row)
+  const fW   = frameW === 0 ? (dim?.h ?? 64) : Math.max(1, frameW);
+  const fH   = frameH === 0 ? (dim?.h ?? 64) : Math.max(1, frameH);
   const cols = dim ? Math.max(1, Math.floor(dim.w / fW)) : 1;
   const shouldAnim = animated && cols > 1;
 
@@ -203,12 +229,12 @@ function AnimatedSprite({
     );
   }
 
+  if (!dim) {
+    return <div style={{ width: 64 * scale, height: 64 * scale }} className="bg-gray-700 animate-pulse rounded" />;
+  }
+
   const pxW = fW * scale;
   const pxH = fH * scale;
-
-  if (!dim) {
-    return <div style={{ width: pxW, height: pxH }} className="bg-gray-700 animate-pulse rounded" />;
-  }
 
   return (
     <div
@@ -233,8 +259,8 @@ function SpriteFrames({ url, frameW, frameH }: { url: string; frameW: number; fr
 
   if (!dim) return <p className="text-xs text-gray-500 italic p-1">Mierzę…</p>;
 
-  const fW = Math.max(1, frameW);
-  const fH = Math.max(1, frameH);
+  const fW = frameW === 0 ? dim.h : Math.max(1, frameW);
+  const fH = frameH === 0 ? dim.h : Math.max(1, frameH);
   const cols  = Math.max(1, Math.floor(dim.w / fW));
   const rows  = Math.max(1, Math.floor(dim.h / fH));
   const total = cols * rows;
@@ -284,7 +310,7 @@ function AnimationRow({ sheet }: { sheet: AssetFile }) {
   const [showFrames, setShowFrames] = useState(false);
   const [urlCopied, setUrlCopied]   = useState(false);
   const fps   = detectFps(sheet.name);
-  const scale = sheet.frameW <= 16 ? 3 : 1.5;
+  const scale = sheet.frameW === 0 ? 2 : sheet.frameW <= 16 ? 3 : 1.5;
 
   const copyUrl = () => {
     navigator.clipboard?.writeText(sheet.url);
@@ -331,6 +357,90 @@ function AnimationRow({ sheet }: { sheet: AssetFile }) {
   );
 }
 
+// ─── AnimGroupRow — one animation (all directions) ───────────────────────────
+
+const DIR_LABELS = [
+  { key: "right", label: "→", dir: "side" as const, flipX: false },
+  { key: "left",  label: "←", dir: "side" as const, flipX: true  },
+  { key: "down",  label: "↓", dir: "down" as const, flipX: false },
+  { key: "up",    label: "↑", dir: "up"   as const, flipX: false },
+];
+
+function AnimGroupRow({ label, sheets }: { label: string; sheets: AssetFile[] }) {
+  const [showFrames, setShowFrames] = useState(false);
+
+  // Map direction → sheet
+  const byDir = new Map<string, AssetFile>();
+  for (const s of sheets) byDir.set(getAnimDir(s.name), s);
+
+  // Side view is default fallback (enemy sheets with no direction suffix → "none")
+  const sideSheet = byDir.get("side") ?? byDir.get("none") ?? sheets[0];
+  const downSheet = byDir.get("down") ?? null;
+  const upSheet   = byDir.get("up")   ?? null;
+
+  const fps = detectFps(sheets[0].name);
+  const refW = sideSheet.frameW;
+  const scale = refW === 0 ? 1.5 : refW <= 16 ? 3 : refW <= 32 ? 2 : 1.5;
+
+  const dirSheets: Record<string, AssetFile | null> = {
+    side: sideSheet, down: downSheet, up: upSheet,
+  };
+
+  return (
+    <div className="rounded-lg border border-gray-700 overflow-hidden">
+      <div className="flex items-center gap-3 p-2 flex-wrap">
+        {/* 4 direction squares */}
+        <div className="flex gap-2 flex-shrink-0">
+          {DIR_LABELS.map(({ key, label: lbl, dir, flipX }) => {
+            const sheet = dirSheets[dir] ?? sideSheet;
+            const missing = dir !== "side" && dirSheets[dir] === null;
+            return (
+              <div key={key} className="flex flex-col items-center gap-0.5">
+                <span className="text-[10px] text-gray-500">{lbl}</span>
+                <div
+                  style={{
+                    transform: flipX ? "scaleX(-1)" : undefined,
+                    opacity: missing ? 0.3 : 1,
+                    background: "repeating-conic-gradient(#3a3a3a 0% 25%, #252525 0% 50%) 0 0 / 8px 8px",
+                    borderRadius: 4,
+                    padding: 2,
+                  }}
+                >
+                  <AnimatedSprite
+                    url={sheet.url} frameW={sheet.frameW} frameH={sheet.frameH}
+                    fps={fps} scale={scale} animated={sheet.isAnim}
+                  />
+                </div>
+                {missing && <span className="text-[9px] text-red-500">brak</span>}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-mono text-gray-200 font-medium">{label}</p>
+          {(downSheet === null || upSheet === null) && (
+            <p className="text-[10px] text-yellow-600/70">brak pełnych kierunków</p>
+          )}
+        </div>
+
+        <button
+          onClick={() => setShowFrames(v => !v)}
+          className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 flex-shrink-0 transition-colors"
+        >
+          {showFrames ? "▲" : "▼ klatki"}
+        </button>
+      </div>
+
+      {showFrames && (
+        <div className="px-2 pb-2">
+          <SpriteFrames url={sideSheet.url} frameW={sideSheet.frameW} frameH={sideSheet.frameH} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── GroupCard ────────────────────────────────────────────────────────────────
 
 const CAT_COLOR: Record<string, string> = {
@@ -353,25 +463,39 @@ function pickPreview(sheets: AssetFile[]): AssetFile {
   return find(/idle.*down/) ?? find(/idle/) ?? find(/walk/) ?? find(/run/) ?? pool[0];
 }
 
+// GroupPreview: fixed 72×72 container, scale calculated from actual image dims
+function GroupPreview({ sheet }: { sheet: AssetFile }) {
+  const dim = useImageDim(sheet.url);
+  const fps = detectFps(sheet.name);
+  const TARGET = 72;
+  // Determine actual frame width: auto-detect uses image height, else use declared frameW
+  const fW = sheet.frameW === 0 ? (dim?.h ?? 64) : sheet.frameW;
+  const scale = fW <= 16 ? Math.min(4, TARGET / fW) : Math.min(2, TARGET / fW);
+
+  return (
+    <div
+      className="rounded-lg flex-shrink-0 flex items-center justify-center overflow-hidden"
+      style={{
+        width: TARGET, height: TARGET,
+        background: "repeating-conic-gradient(#3a3a3a 0% 25%, #252525 0% 50%) 0 0 / 8px 8px",
+      }}
+    >
+      <AnimatedSprite url={sheet.url} frameW={sheet.frameW} frameH={sheet.frameH} fps={fps} scale={scale} animated={sheet.isAnim} />
+    </div>
+  );
+}
+
 function GroupCard({ group }: { group: AssetGroup }) {
   const [expanded, setExpanded] = useState(false);
   const preview = pickPreview(group.sheets);
   const catCls  = CAT_COLOR[group.category] ?? CAT_COLOR.other;
-  const scale   = preview.frameW <= 16 ? 4 : preview.frameW <= 64 ? 2 : 1;
-  const fps     = detectFps(preview.name);
   const multi   = group.sheets.length > 1;
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden hover:border-gray-500 transition-colors flex flex-col">
       {/* Header */}
       <div className="flex items-center gap-3 p-3">
-        {/* Animated preview */}
-        <div
-          className="rounded-lg overflow-hidden flex-shrink-0"
-          style={{ background: "repeating-conic-gradient(#3a3a3a 0% 25%, #252525 0% 50%) 0 0 / 8px 8px", padding: 4 }}
-        >
-          <AnimatedSprite url={preview.url} frameW={preview.frameW} frameH={preview.frameH} fps={fps} scale={scale} animated={preview.isAnim} />
-        </div>
+        <GroupPreview sheet={preview} />
 
         <div className="flex-1 min-w-0 space-y-1">
           <p className="font-semibold text-white text-sm leading-tight truncate" title={group.name}>{group.name}</p>
@@ -396,9 +520,18 @@ function GroupCard({ group }: { group: AssetGroup }) {
       {/* Expanded: all animation rows */}
       {expanded && (
         <div className="p-2 border-t border-gray-700 space-y-1.5 max-h-[600px] overflow-y-auto">
-          {group.sheets.map(sheet => (
-            <AnimationRow key={sheet.url} sheet={sheet} />
-          ))}
+          {(() => {
+            // Group sheets by animation base name (e.g. Idle_Down + Idle_Side + Idle_Up → "Idle")
+            const animGroups = new Map<string, AssetFile[]>();
+            for (const sheet of group.sheets) {
+              const base = getAnimBase(sheet.name);
+              if (!animGroups.has(base)) animGroups.set(base, []);
+              animGroups.get(base)!.push(sheet);
+            }
+            return Array.from(animGroups.entries()).map(([base, sheets]) => (
+              <AnimGroupRow key={base} label={base} sheets={sheets} />
+            ));
+          })()}
         </div>
       )}
     </div>
