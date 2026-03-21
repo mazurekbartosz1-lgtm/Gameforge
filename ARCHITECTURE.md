@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-21 (Session 5, end of Wieczór 15)
+2026-03-21 (Session 6, end of Wieczór 17)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -24,7 +24,7 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ Wieczór 14: Resource nodes — client-side chunk generation, tree/rock sprites, dead-resource sync, box collision
 - ✅ Wieczór 15: Gameplay polish — inventory HUD, harvest detection fix, sprite destroy-on-death, overlapping footprints fix, tree/rock tuning
 - ✅ Wieczór 16: Camera deadzone + lerp, minimap z mgłą wojny, VISION_RADIUS 60→16
-- ⏳ Wieczór 17: TBD
+- ✅ Wieczór 17: System wrogów — Hunter enemy, AI chase/attack, zone-based spawning, map collision, debug overlays
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
@@ -98,6 +98,41 @@ Gameforge/
 - `move` — x, y, direction, animKey
 - `equip` — slot, itemId
 - `activeSlot` — slot index
+
+## Wieczór 17 additions
+
+### Enemy system (Hunter)
+- `EnemyState` schema: id, type, x/y, hp/maxHp, isAlive, animKey
+- 6 sprites per enemy (`idle/walk/pierce × down/side/up`), visibility toggled via `HUNTER_ANIM_MAP`
+- Pierce animations loop (`repeat: -1`)
+
+### Zone-based dynamic spawning
+- World divided into 256px zones; `enter_chunk` message triggers `activateZone(zx, zy)` for radius-2 neighbourhood
+- Up to 8 spawn attempts per enemy — skips positions blocked by trees/rocks (`isEnemyMoveBlocked`)
+- `MAX_ALIVE_ENEMIES = 40`, `ENEMY_SPAWN_RADIUS = 2` enemies per zone
+
+### Server tick architecture
+- Single `setSimulationInterval` → `masterTick(dt)` at 100ms (Colyseus only keeps last registration)
+- `gameTickAccum` accumulator fires full AI + hunger + worldTime logic every 1000ms
+- `tickEnemyMovement()` at 100ms: applies velocity, blocks on map objects, switches to pierce anim when stopped by player
+- `tickEnemyAI()` at 1000ms: chase (`ENEMY_CHASE_RANGE=500px`), stop+attack (`ENEMY_STOP_DIST=54px`), wander
+- `separateEnemies()` at 100ms: enemy-enemy separation only (player push removed)
+
+### Map collision on server
+- `mapHash / mapIsForestTile / mapTreeAtChunk / mapRockAtChunk` — ported from `MapGenerator.ts` with same constants
+- `mapTileBlockedCache: Map<string,boolean>` — per-tile cache (invalidated on rock harvest)
+- Tree footprint: `[wx-3..wx+3] × [wy-9..wy]`; Rock footprint: `[wx..wx+2] × [wy..wy+2]`
+
+### Player ↔ enemy interaction
+- `attack_enemy` message: validates dist < `ENEMY_ATTACK_RANGE=64px`, deals 10 damage, broadcasts kill
+- `player_damage` targeted message sent to client when enemy reaches player
+- Client SPACE attack range: 64px in facing direction
+- Client collision: circular check radius 28px (enemy blocks player, not vice versa)
+
+### Debug overlays (collisionGfx)
+- Magenta rectangles — enemy collision boxes (ENEMY_HW=14, ENEMY_HH=22)
+- Bordeaux circles — enemy attack range (64px radius)
+- Red circle — player damage receive range (54px radius)
 
 ## Wieczór 16 additions
 

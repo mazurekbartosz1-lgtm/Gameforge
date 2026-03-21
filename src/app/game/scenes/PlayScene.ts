@@ -23,6 +23,19 @@ interface RemotePlayer {
   currentAnim: string;
 }
 
+interface EnemyData {
+  id: string;
+  x: number;
+  y: number;
+  targetX: number;
+  targetY: number;
+  hp: number;
+  maxHp: number;
+  currentAnim: string;
+  sprites: Map<string, Phaser.GameObjects.Sprite>;
+  hpBar: Phaser.GameObjects.Graphics;
+}
+
 interface ResourceNodeData {
   id: string;
   type: "tree" | "rock";
@@ -57,6 +70,9 @@ const VISION_RADIUS = 16;   // tiles — ~256px radius, fog visible on 800×600 
 const MAX_WORLD_PX  = 100_000; // soft world edge in pixels from origin
 const PLAYER_HW     = 12;   // collision half-width  px (24px total = 1.5 tiles)
 const PLAYER_HH     = 20;   // collision half-height px (40px total = 2.5 tiles)
+const ENEMY_HW      = 14;   // enemy collision half-width (debug display only)
+const ENEMY_HH      = 22;   // enemy collision half-height (debug display only)
+const ENEMY_ZONE_PX = 256;  // px per enemy spawn zone (16 tiles × 16px)
 
 export class PlayScene extends Scene {
   // Player world position — starts at world origin (tile 0,0)
@@ -76,6 +92,7 @@ export class PlayScene extends Scene {
 
   private room: Room | null = null;
   private remotePlayers: Map<string, RemotePlayer> = new Map();
+  private enemies: Map<string, EnemyData> = new Map();
   private resourceSprites: Map<string, Phaser.GameObjects.Image> = new Map();
   private resourceData:   Map<string, ResourceNodeData>           = new Map();
 
@@ -101,8 +118,10 @@ export class PlayScene extends Scene {
   // Fog of war
   private fogGraphics!: Phaser.GameObjects.Graphics;
   private discovered   = new Set<string>();
-  private lastTileX    = Number.MAX_SAFE_INTEGER;
-  private lastTileY    = Number.MAX_SAFE_INTEGER;
+  private lastTileX      = Number.MAX_SAFE_INTEGER;
+  private lastTileY      = Number.MAX_SAFE_INTEGER;
+  private lastEnemyZoneX = Number.MAX_SAFE_INTEGER;
+  private lastEnemyZoneY = Number.MAX_SAFE_INTEGER;
 
   // Minimap
   private minimapGfx!: Phaser.GameObjects.Graphics;
@@ -141,6 +160,18 @@ export class PlayScene extends Scene {
 
     preloadToolSprites(this);
 
+    // Hunter enemy spritesheets (64×64 frames)
+    const hcfg = { frameWidth: 64, frameHeight: 64 };
+    this.load.spritesheet("hunter_idle_down",  "/assets/enemy/hunter/hunter_idle_down.png",  hcfg);
+    this.load.spritesheet("hunter_idle_side",  "/assets/enemy/hunter/hunter_idle_side.png",  hcfg);
+    this.load.spritesheet("hunter_idle_up",    "/assets/enemy/hunter/hunter_idle_up.png",    hcfg);
+    this.load.spritesheet("hunter_walk_down",    "/assets/enemy/hunter/hunter_walk_down.png",    hcfg);
+    this.load.spritesheet("hunter_walk_side",    "/assets/enemy/hunter/hunter_walk_side.png",    hcfg);
+    this.load.spritesheet("hunter_walk_up",      "/assets/enemy/hunter/hunter_walk_up.png",      hcfg);
+    this.load.spritesheet("hunter_pierce_down",  "/assets/enemy/hunter/hunter_pierce_down.png",  hcfg);
+    this.load.spritesheet("hunter_pierce_side",  "/assets/enemy/hunter/hunter_pierce_side.png",  hcfg);
+    this.load.spritesheet("hunter_pierce_up",    "/assets/enemy/hunter/hunter_pierce_up.png",    hcfg);
+
     // Tree spritesheet: 4 cols × 2 rows of full trees (448×368, frame 112×184)
     this.load.spritesheet("tree_sheet", "/assets/resources/tree_sheet.png", { frameWidth: 112, frameHeight: 184 });
     // Rock spritesheet: 16×16 grid (208×304, frame 16×16)
@@ -172,6 +203,7 @@ export class PlayScene extends Scene {
     // ── Animations ─────────────────────────────────────────────────────────
     createPlayerAnimations(this);
     createToolAnimations(this);
+    this.createHunterAnimations();
 
     // ── Player sprites (one per texture, only one visible at a time) ───────
     for (const key of Object.keys(ANIM_MAP)) {
@@ -230,6 +262,101 @@ export class PlayScene extends Scene {
       this.generateTreeChunksAround(0, 0);
       this.generateRockChunksAround(0, 0);
     }
+  }
+
+  // ── Enemies ───────────────────────────────────────────────────────────────
+
+  private createHunterAnimations() {
+    const add = (key: string, tex: string, frames: number, fps: number) => {
+      if (!this.anims.exists(key))
+        this.anims.create({ key, frames: this.anims.generateFrameNumbers(tex, { start: 0, end: frames - 1 }), frameRate: fps, repeat: -1 });
+    };
+    add("hunter_idle_down", "hunter_idle_down", 4, 6);
+    add("hunter_idle_side", "hunter_idle_side", 4, 6);
+    add("hunter_idle_up",   "hunter_idle_up",   4, 6);
+    add("hunter_walk_down", "hunter_walk_down",  6, 8);
+    add("hunter_walk_side", "hunter_walk_side",  6, 8);
+    add("hunter_walk_up",   "hunter_walk_up",    6, 8);
+    // Pierce — loop while enemy is in attack stance
+    add("hunter_pierce_down", "hunter_pierce_down", 8, 8);
+    add("hunter_pierce_side", "hunter_pierce_side", 8, 8);
+    add("hunter_pierce_up",   "hunter_pierce_up",   8, 8);
+  }
+
+  private readonly HUNTER_ANIM_MAP: Record<string, { texture: string; flipX: boolean }> = {
+    idle_down:  { texture: "hunter_idle_down", flipX: false },
+    idle_up:    { texture: "hunter_idle_up",   flipX: false },
+    idle_left:  { texture: "hunter_idle_side", flipX: true  },
+    idle_right: { texture: "hunter_idle_side", flipX: false },
+    walk_down:    { texture: "hunter_walk_down",   flipX: false },
+    walk_up:      { texture: "hunter_walk_up",     flipX: false },
+    walk_left:    { texture: "hunter_walk_side",   flipX: true  },
+    walk_right:   { texture: "hunter_walk_side",   flipX: false },
+    pierce_down:  { texture: "hunter_pierce_down", flipX: false },
+    pierce_up:    { texture: "hunter_pierce_up",   flipX: false },
+    pierce_left:  { texture: "hunter_pierce_side", flipX: true  },
+    pierce_right: { texture: "hunter_pierce_side", flipX: false },
+  };
+
+  private createEnemySprites(x: number, y: number): Map<string, Phaser.GameObjects.Sprite> {
+    const sprites = new Map<string, Phaser.GameObjects.Sprite>();
+    for (const tex of ["hunter_idle_down", "hunter_idle_up", "hunter_idle_side", "hunter_walk_down", "hunter_walk_up", "hunter_walk_side", "hunter_pierce_down", "hunter_pierce_up", "hunter_pierce_side"]) {
+      const s = this.add.sprite(x, y, tex).setScale(1.5).setDepth(9);
+      s.setVisible(false);
+      sprites.set(tex, s);
+    }
+    return sprites;
+  }
+
+  private playEnemyAnim(enemy: EnemyData, animKey: string) {
+    enemy.currentAnim = animKey;
+    const mapped = this.HUNTER_ANIM_MAP[animKey] ?? this.HUNTER_ANIM_MAP["idle_down"];
+    // Hunter anim key = texture key (e.g. "hunter_walk_down")
+    const hunterAnimKey = mapped.texture;
+    enemy.sprites.forEach((s, tex) => {
+      const visible = tex === mapped.texture;
+      s.setVisible(visible);
+      if (visible) { s.setFlipX(mapped.flipX); s.play(hunterAnimKey, true); }
+    });
+  }
+
+  private addEnemy(data: { id: string; x: number; y: number; animKey: string; hp: number; maxHp: number }) {
+    if (this.enemies.has(data.id)) return;
+    const sprites = this.createEnemySprites(data.x, data.y);
+    const hpBar   = this.add.graphics().setDepth(12);
+    const enemy: EnemyData = {
+      id: data.id, x: data.x, y: data.y, targetX: data.x, targetY: data.y,
+      hp: data.hp, maxHp: data.maxHp, currentAnim: data.animKey, sprites, hpBar,
+    };
+    this.enemies.set(data.id, enemy);
+    this.playEnemyAnim(enemy, data.animKey);
+  }
+
+  private drawEnemyHpBar(enemy: EnemyData) {
+    const g = enemy.hpBar;
+    g.clear();
+    if (enemy.hp <= 0) return;
+    const w = 40; const h = 4;
+    const bx = enemy.x - w / 2; const by = enemy.y - 52;
+    g.fillStyle(0x000000, 0.6); g.fillRect(bx, by, w, h);
+    const pct = enemy.hp / enemy.maxHp;
+    const col = pct > 0.5 ? 0x44cc44 : pct > 0.25 ? 0xffaa00 : 0xcc2222;
+    g.fillStyle(col, 1); g.fillRect(bx, by, w * pct, h);
+  }
+
+  private killEnemy(id: string) {
+    const enemy = this.enemies.get(id);
+    if (!enemy) return;
+    // Red particle burst
+    const particles = this.add.particles(enemy.x, enemy.y, "__DEFAULT", {
+      speed: { min: 40, max: 120 }, lifespan: 500, quantity: 12,
+      scale: { start: 0.3, end: 0 }, tint: 0xcc2222, emitting: false,
+    });
+    particles.explode(12);
+    this.time.delayedCall(600, () => particles.destroy());
+    enemy.sprites.forEach((s) => s.destroy());
+    enemy.hpBar.destroy();
+    this.enemies.delete(id);
   }
 
   // ── Remote players ────────────────────────────────────────────────────────
@@ -332,14 +459,39 @@ export class PlayScene extends Scene {
     room.onMessage("harvest_reward", (data: { drops: Array<{ item: string; qty: number }> }) => {
       this.addItems(data.drops);
     });
+
+    room.onMessage("enemy_update", (data: { id: string; x: number; y: number; animKey: string }) => {
+      const enemy = this.enemies.get(data.id);
+      if (!enemy) {
+        this.addEnemy({ id: data.id, x: data.x, y: data.y, animKey: data.animKey, hp: 30, maxHp: 30 });
+        return;
+      }
+      enemy.targetX = data.x;
+      enemy.targetY = data.y;
+      if (data.animKey !== enemy.currentAnim) this.playEnemyAnim(enemy, data.animKey);
+    });
+
+    room.onMessage("enemy_hit", (data: { id: string; hp: number }) => {
+      const enemy = this.enemies.get(data.id);
+      if (enemy) enemy.hp = data.hp;
+    });
+
+    room.onMessage("enemy_dead", (data: { id: string }) => {
+      this.killEnemy(data.id);
+    });
+
+    room.onMessage("player_damage", (data: { damage: number; hp: number }) => {
+      this.showPickupText(this.px, this.py - 50, `-${data.damage} HP`);
+    });
   }
 
   // ── Inventory ─────────────────────────────────────────────────────────────
 
   private initInventoryHud() {
     const ITEMS: Array<{ key: string; label: string; color: string }> = [
-      { key: "wood",  label: "Wood",  color: "#c8a46e" },
-      { key: "stone", label: "Stone", color: "#aaaaaa" },
+      { key: "wood",     label: "Wood",  color: "#c8a46e" },
+      { key: "stone",    label: "Stone", color: "#aaaaaa" },
+      { key: "raw_meat", label: "Meat",  color: "#e07050" },
     ];
     const slotW  = 80;
     const totalW = ITEMS.length * slotW + (ITEMS.length - 1) * 8;
@@ -709,6 +861,23 @@ export class PlayScene extends Scene {
     this.collisionGfx.fillStyle(0x00ffff, 0.40);
     this.collisionGfx.fillRect(px - PLAYER_HW, py - PLAYER_HH, PLAYER_HW * 2, PLAYER_HH * 2);
 
+    // Red circle — player damage receive range (server ENEMY_MELEE_RANGE = 54px)
+    this.collisionGfx.lineStyle(2, 0xff2222, 0.85);
+    this.collisionGfx.strokeCircle(px, py, 54);
+
+    // Magenta rectangles — enemy collision boxes
+    this.collisionGfx.fillStyle(0xff00ff, 0.35);
+    this.enemies.forEach((enemy) => {
+      this.collisionGfx.fillRect(enemy.x - ENEMY_HW, enemy.y - ENEMY_HH, ENEMY_HW * 2, ENEMY_HH * 2);
+    });
+
+    // Bordeaux circles — enemy melee attack range (64px radius)
+    const ENEMY_ATK_R = 64;
+    this.collisionGfx.lineStyle(2, 0x8b0000, 0.80);
+    this.enemies.forEach((enemy) => {
+      this.collisionGfx.strokeCircle(enemy.x, enemy.y, ENEMY_ATK_R);
+    });
+
     // Orange rectangle — slice attack range in front of player
     const atkFwd = 48; // px forward reach (3 tiles)
     const atkSide = 32; // px side reach (2 tiles)
@@ -776,8 +945,23 @@ export class PlayScene extends Scene {
     const dt = delta / 1000;
 
     // Action keys
-    const eJustDown = Phaser.Input.Keyboard.JustDown(this.actionKeys["E"]);
-    if (Phaser.Input.Keyboard.JustDown(this.actionKeys["SPACE"])) {
+    const eJustDown     = Phaser.Input.Keyboard.JustDown(this.actionKeys["E"]);
+    const spaceJustDown = Phaser.Input.Keyboard.JustDown(this.actionKeys["SPACE"]);
+    if (spaceJustDown) {
+      // Find closest enemy in facing direction ≤64px and send attack
+      let closest: EnemyData | null = null;
+      let closestDist = 64;
+      this.enemies.forEach((enemy) => {
+        const dx = enemy.x - this.px; const dy = enemy.y - this.py;
+        const dist = Math.hypot(dx, dy);
+        const inFront =
+          (this.direction === "right" && dx > 0 && Math.abs(dy) < 60) ||
+          (this.direction === "left"  && dx < 0 && Math.abs(dy) < 60) ||
+          (this.direction === "down"  && dy > 0 && Math.abs(dx) < 60) ||
+          (this.direction === "up"    && dy < 0 && Math.abs(dx) < 60);
+        if (inFront && dist < closestDist) { closestDist = dist; closest = enemy; }
+      });
+      if (closest && this.room) this.room.send("attack_enemy", { enemyId: (closest as EnemyData).id });
       this.playActionAnim("slice");
     }
 
@@ -822,6 +1006,17 @@ export class PlayScene extends Scene {
       this.generateRockChunksAround(tileX, tileY);
     }
 
+    // Enemy zone — trigger server spawn when player enters a new zone
+    if (this.room) {
+      const zoneX = Math.floor(this.px / ENEMY_ZONE_PX);
+      const zoneY = Math.floor(this.py / ENEMY_ZONE_PX);
+      if (zoneX !== this.lastEnemyZoneX || zoneY !== this.lastEnemyZoneY) {
+        this.lastEnemyZoneX = zoneX;
+        this.lastEnemyZoneY = zoneY;
+        this.room.send("enter_chunk", { chunkX: zoneX, chunkY: zoneY });
+      }
+    }
+
     // Background — sync tile UVs with camera scroll so grass appears to move
     this.grassBg.setTilePosition(this.cameras.main.scrollX, this.cameras.main.scrollY);
 
@@ -855,6 +1050,28 @@ export class PlayScene extends Scene {
         remote.sprites.forEach((s) => s.setVisible(false));
       }
       remote.label.setVisible(inVision);
+    });
+
+    // Enemy interpolation + fog of war + HP bars
+    this.enemies.forEach((enemy) => {
+      enemy.x = Phaser.Math.Linear(enemy.x, enemy.targetX, 0.35);
+      enemy.y = Phaser.Math.Linear(enemy.y, enemy.targetY, 0.35);
+      enemy.sprites.forEach((s) => { s.x = enemy.x; s.y = enemy.y; });
+
+      const edx = enemy.x - this.px;
+      const edy = enemy.y - this.py;
+      const inVision = edx * edx + edy * edy <= visionPx * visionPx;
+      if (inVision) {
+        const { texture, flipX } = this.HUNTER_ANIM_MAP[enemy.currentAnim] ?? this.HUNTER_ANIM_MAP["idle_down"];
+        enemy.sprites.forEach((s, key) => {
+          s.setVisible(key === texture);
+          if (key === texture) s.setFlipX(flipX);
+        });
+        this.drawEnemyHpBar(enemy);
+      } else {
+        enemy.sprites.forEach((s) => s.setVisible(false));
+        enemy.hpBar.clear();
+      }
     });
 
     // Resource visibility — show only within vision radius
@@ -922,6 +1139,13 @@ export class PlayScene extends Scene {
     for (let ty = minTY; ty <= maxTY; ty++)
       for (let tx = minTX; tx <= maxTX; tx++)
         if (this.aliveResourceAt(`${tx},${ty}`)) return true;
+
+    // Player is blocked by alive enemies — circular check for symmetric movement
+    const ENEMY_BLOCK_R = 28;
+    for (const enemy of this.enemies.values()) {
+      const dx = px - enemy.x; const dy = py - enemy.y;
+      if (dx * dx + dy * dy < ENEMY_BLOCK_R * ENEMY_BLOCK_R) return true;
+    }
     return false;
   }
 }

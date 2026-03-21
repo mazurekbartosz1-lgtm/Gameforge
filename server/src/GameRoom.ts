@@ -98,6 +98,80 @@ const HUNGER_DRAIN_PER_SEC = 0.5 / (TICK_RATE / 1000);
 const SANITY_NIGHT_DRAIN = 1.0 / (TICK_RATE / 1000);
 const SANITY_DAY_REGEN = 0.5 / (TICK_RATE / 1000);
 
+const TILE_PX             = 16;   // pixels per tile (mirrors client TILE_SIZE)
+const ENEMY_ZONE_TILES    = 16;   // tiles per enemy spawn zone side (256 px)
+const ENEMY_ZONE_PX       = TILE_PX * ENEMY_ZONE_TILES; // 256 px per zone
+const ENEMY_SPAWN_RADIUS  = 2;    // zones to activate around player (5×5 = 25 zones)
+const ENEMY_SPAWN_CLEAR   = 2;    // zone radius around origin kept empty
+const MAX_ALIVE_ENEMIES   = 40;   // soft cap on alive enemy count
+
+const ENEMY_HP             = 30;
+const ENEMY_SPEED          = 100;  // px/s — same as player
+const ENEMY_MOVE_RATE      = 100;  // ms between movement ticks
+const ENEMY_CHASE_RANGE    = 500;  // px — distance to start chasing
+const PLAYER_ENEMY_SEP_PX  = 52;   // px — enemies blocked outside this radius around player
+const ENEMY_STOP_DIST      = 54;   // px — AI stops enemy here (slightly above SEP so it fires)
+const ENEMY_MELEE_RANGE    = 54;   // px — pierce + damage triggers here (= STOP_DIST)
+const ENEMY_SEPARATION_PX  = 30;   // px — minimum distance between two enemies
+const ENEMY_ATTACK_RANGE   = 64;   // px — max distance for player's own attack (server validates)
+const ENEMY_ATTACK_DAMAGE  = 10;   // HP per hit
+
+// ─── Map Collision (ported from client MapGenerator.ts) ───────────────────
+
+const MAP_TREE_STEP          = 10;
+const MAP_ROCK_STEP          = 3;
+const MAP_TREE_MAX_OFFSET    = 3;
+const MAP_ROCK_DENSITY       = 0.375;
+const MAP_SPAWN_CLEAR_RADIUS = 16;   // tiles
+const MAP_SMOOTH_RADIUS      = 10;
+const MAP_SMOOTH_CELLS       = (2 * MAP_SMOOTH_RADIUS + 1) ** 2; // 441
+const MAP_FOREST_THRESHOLD   = 0.494;
+const MAP_ROCK_BUFFER        = 0.492;
+
+function mapHash(wx: number, wy: number, seed: number): number {
+  let h = (seed ^ Math.imul(wx, 374761393) ^ Math.imul(wy, 668265263)) | 0;
+  h = (h + 0x6D2B79F5) | 0;
+  let t = Math.imul(h ^ (h >>> 15), 1 | h);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
+function mapForestDensity(wx: number, wy: number, seed: number): number {
+  let sum = 0;
+  for (let dy = -MAP_SMOOTH_RADIUS; dy <= MAP_SMOOTH_RADIUS; dy++)
+    for (let dx = -MAP_SMOOTH_RADIUS; dx <= MAP_SMOOTH_RADIUS; dx++)
+      sum += mapHash(wx + dx, wy + dy, seed);
+  return sum / MAP_SMOOTH_CELLS;
+}
+
+function mapIsForestTile(wx: number, wy: number, seed: number): boolean {
+  if (wx * wx + wy * wy < MAP_SPAWN_CLEAR_RADIUS * MAP_SPAWN_CLEAR_RADIUS) return false;
+  return mapForestDensity(wx, wy, seed) > MAP_FOREST_THRESHOLD;
+}
+
+function mapTreeAtChunk(cx: number, cy: number, seed: number): { wx: number; wy: number } | null {
+  const gx = cx * MAP_TREE_STEP;
+  const gy = cy * MAP_TREE_STEP;
+  const h1 = mapHash(gx, gy, seed ^ 0x1111);
+  const h2 = mapHash(gx, gy, seed ^ 0x2222);
+  const wx = gx + Math.floor(h1 * MAP_TREE_MAX_OFFSET);
+  const wy = gy + Math.floor(h2 * MAP_TREE_MAX_OFFSET);
+  if (!mapIsForestTile(wx, wy, seed)) return null;
+  return { wx, wy };
+}
+
+function mapRockAtChunk(cx: number, cy: number, seed: number): { wx: number; wy: number } | null {
+  const gx = cx * MAP_ROCK_STEP;
+  const gy = cy * MAP_ROCK_STEP;
+  if (mapHash(gx, gy, seed ^ 0xA55A) > MAP_ROCK_DENSITY) return null;
+  // ROCK_MAX_OFFSET=1: floor(h*1)=0, no jitter
+  const wx = gx;
+  const wy = gy;
+  if (wx * wx + wy * wy < MAP_SPAWN_CLEAR_RADIUS * MAP_SPAWN_CLEAR_RADIUS) return null;
+  if (mapForestDensity(wx, wy, seed) > MAP_ROCK_BUFFER) return null;
+  return { wx, wy };
+}
+
 // ─── Room ────────────────────────────────────────────────────────────────────
 
 export class GameRoom extends Room<GameRoomOptions> {
@@ -106,12 +180,24 @@ export class GameRoom extends Room<GameRoomOptions> {
   /** Client-generated trees harvested by players (never respawn). */
   private deadTrees = new Map<string, number>();
 
+  /** Dead rocks harvested by players — excluded from map collision. */
+  private deadRocks = new Set<string>();
+  /** Cache of tile-blocked status for enemy map collision. */
+  private mapTileBlockedCache = new Map<string, boolean>();
+
+  /** Per-enemy velocity decided by AI tick, applied every move tick. */
+  private enemyVelocities = new Map<string, { vx: number; vy: number }>();
+  /** Tracks which enemy spawn zones have already been activated. */
+  private spawnedZones = new Set<string>();
+  /** Accumulated ms since last full game tick (hunger, AI decision, etc.). */
+  private gameTickAccum = 0;
+
   onCreate(_options: any) {
     const state = new WorldState();
     state.mapSeed = Math.floor(Math.random() * 2_147_483_647); // random uint31
     this.setState(state);
-    // Trees and rocks are generated client-side — no server spawning needed.
-    this.setSimulationInterval(() => this.tick(), TICK_RATE);
+    // Single interval at ENEMY_MOVE_RATE (100ms); game logic fires every TICK_RATE ms via accumulator.
+    this.setSimulationInterval((dt: number) => this.masterTick(dt), ENEMY_MOVE_RATE);
     this.registerMessageHandlers();
     console.log(`[GameRoom] created – roomId: ${this.roomId}, seed: ${state.mapSeed}`);
   }
@@ -162,12 +248,21 @@ export class GameRoom extends Room<GameRoomOptions> {
 
   // ─── Tick ──────────────────────────────────────────────────────────────────
 
-  private tick() {
-    const now = Date.now();
+  private masterTick(dt: number) {
+    // Enemy movement + separation every call (100ms)
+    this.tickEnemyMovement();
+    this.separateEnemies();
 
-    this.updateWorldTime(now);
-    this.drainHungerAndSanity();
-    this.respawnNodes(now);
+    // Full game logic every TICK_RATE ms
+    this.gameTickAccum += dt;
+    if (this.gameTickAccum >= TICK_RATE) {
+      this.gameTickAccum -= TICK_RATE;
+      const now = Date.now();
+      this.updateWorldTime(now);
+      this.drainHungerAndSanity();
+      this.respawnNodes(now);
+      this.tickEnemyAI();
+    }
   }
 
   private updateWorldTime(now: number) {
@@ -223,6 +318,271 @@ export class GameRoom extends Room<GameRoomOptions> {
     });
   }
 
+  // ─── Enemy Spawn Zones ────────────────────────────────────────────────────
+
+  /** Deterministic hash of a zone coordinate. */
+  private hashZone(zx: number, zy: number): number {
+    const seed = this.state.mapSeed;
+    let h = (seed ^ Math.imul(zx, 374761393) ^ Math.imul(zy, 668265263)) | 0;
+    h = (h + 0x6D2B79F5) | 0;
+    h = Math.imul(h ^ (h >>> 15), 1 | h);
+    h = (h + Math.imul(h ^ (h >>> 7), 61 | h)) ^ h;
+    return ((h ^ (h >>> 14)) >>> 0) / 4294967296;
+  }
+
+  /** Activate a zone: maybe spawn 0–8 enemies deterministically. */
+  private activateZone(zx: number, zy: number) {
+    const key = `${zx},${zy}`;
+    if (this.spawnedZones.has(key)) return;
+    this.spawnedZones.add(key);
+
+    // Keep origin area empty
+    if (zx * zx + zy * zy < ENEMY_SPAWN_CLEAR * ENEMY_SPAWN_CLEAR) return;
+
+    const h = this.hashZone(zx, zy);
+    let count: number;
+    if      (h < 0.80) return;         // 80% — empty zone
+    else if (h < 0.93) count = 1;      // 13% — lone hunter
+    else if (h < 0.98) count = 2;      // 5%  — pair
+    else               count = 3;      // 2%  — trio (no large packs)
+
+    let alive = 0;
+    this.state.enemies.forEach((e: EnemyState) => { if (e.isAlive) alive++; });
+
+    for (let i = 0; i < count; i++) {
+      if (alive >= MAX_ALIVE_ENEMIES) break;
+      // Try up to 8 positions — skip any that land on a collision tile
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const hx = this.hashZone(zx * 1000 + i * 31 + attempt * 13, zy * 7 + 1);
+        const hy = this.hashZone(zx * 7 + 1, zy * 1000 + i * 31 + attempt * 13);
+        const ex = zx * ENEMY_ZONE_PX + hx * ENEMY_ZONE_PX;
+        const ey = zy * ENEMY_ZONE_PX + hy * ENEMY_ZONE_PX;
+        if (!this.isEnemyMoveBlocked(ex, ey)) {
+          this.spawnSingleEnemy(`e_${zx}_${zy}_${i}`, ex, ey);
+          alive++;
+          break;
+        }
+      }
+    }
+  }
+
+  private spawnSingleEnemy(id: string, x: number, y: number) {
+    if (this.state.enemies.has(id)) return;
+    const enemy = new EnemyState();
+    enemy.id     = id;
+    enemy.type   = "hunter";
+    enemy.x      = x;
+    enemy.y      = y;
+    enemy.hp     = ENEMY_HP;
+    enemy.maxHp  = ENEMY_HP;
+    enemy.isAlive = true;
+    enemy.animKey = "idle_down";
+    this.state.enemies.set(id, enemy);
+    this.enemyVelocities.set(id, { vx: 0, vy: 0 });
+  }
+
+  // ─── Enemy AI ─────────────────────────────────────────────────────────────
+
+  /** Called every 1000ms — decides each enemy's velocity and attack. */
+  private tickEnemyAI() {
+    const players: Array<{ x: number; y: number; sessionId: string }> = [];
+    this.state.players.forEach((p: PlayerState) => {
+      if (p.isOnline) players.push({ x: p.x, y: p.y, sessionId: p.sessionId });
+    });
+
+    // px per 100ms move tick
+    const moveSpeed = ENEMY_SPEED * (ENEMY_MOVE_RATE / 1000);
+
+    this.state.enemies.forEach((enemy: EnemyState) => {
+      if (!enemy.isAlive) return;
+
+      // Find nearest player
+      let nearest: { x: number; y: number; sessionId: string } | null = null;
+      let nearestDist = Infinity;
+      for (const p of players) {
+        const d = Math.hypot(p.x - enemy.x, p.y - enemy.y);
+        if (d < nearestDist) { nearestDist = d; nearest = p; }
+      }
+
+      if (!nearest) return;
+
+      const dx = nearest.x - enemy.x;
+      const dy = nearest.y - enemy.y;
+      const dir = Math.abs(dx) >= Math.abs(dy)
+        ? (dx > 0 ? "right" : "left")
+        : (dy > 0 ? "down" : "up");
+
+      if (nearestDist < ENEMY_STOP_DIST) {
+        // ── In melee range — stop moving ──────────────────────────────────────
+        this.enemyVelocities.set(enemy.id, { vx: 0, vy: 0 });
+
+        if (nearestDist < ENEMY_MELEE_RANGE) {
+          // ── Attack (pierce) ─────────────────────────────────────────────────
+          enemy.animKey = `pierce_${dir}`;
+          const attackedPlayer = this.state.players.get(nearest.sessionId);
+          if (attackedPlayer) {
+            attackedPlayer.hp = Math.max(0, attackedPlayer.hp - ENEMY_ATTACK_DAMAGE);
+            const attackedClient = this.clients.find(c => c.sessionId === nearest!.sessionId);
+            attackedClient?.send("player_damage", { damage: ENEMY_ATTACK_DAMAGE, hp: attackedPlayer.hp });
+          }
+        } else {
+          // ── Ready stance — face player ───────────────────────────────────────
+          enemy.animKey = `idle_${dir}`;
+        }
+      } else if (nearestDist < ENEMY_CHASE_RANGE) {
+        // ── Chase ─────────────────────────────────────────────────────────────
+        this.enemyVelocities.set(enemy.id, { vx: (dx / nearestDist) * moveSpeed, vy: (dy / nearestDist) * moveSpeed });
+        enemy.animKey = `walk_${dir}`;
+      } else {
+        // ── Wander ────────────────────────────────────────────────────────────
+        const angle = Math.random() * Math.PI * 2;
+        const wanderSpeed = moveSpeed * 0.3;
+        this.enemyVelocities.set(enemy.id, { vx: Math.cos(angle) * wanderSpeed, vy: Math.sin(angle) * wanderSpeed });
+        if (enemy.animKey.startsWith("walk") || enemy.animKey.startsWith("pierce"))
+          enemy.animKey = `idle_${dir}`;
+      }
+    });
+  }
+
+  private isMapTileBlocked(tx: number, ty: number): boolean {
+    const key = `${tx},${ty}`;
+    const cached = this.mapTileBlockedCache.get(key);
+    if (cached !== undefined) return cached;
+    const result = this.computeMapTileBlocked(tx, ty);
+    this.mapTileBlockedCache.set(key, result);
+    return result;
+  }
+
+  private computeMapTileBlocked(tx: number, ty: number): boolean {
+    const seed = this.state.mapSeed;
+
+    // Tree: footprint [wx-3..wx+3] × [wy-9..wy]. Chunks where wx∈[tx-3,tx+3], wy∈[ty,ty+9].
+    // wx = cx*TREE_STEP + jitter(0..2) → cx ∈ [floor((tx-5)/TREE_STEP), floor((tx+3)/TREE_STEP)]
+    // wy = cy*TREE_STEP + jitter(0..2) → cy ∈ [floor((ty-2)/TREE_STEP), floor((ty+9)/TREE_STEP)]
+    {
+      const cxMin = Math.floor((tx - 5) / MAP_TREE_STEP);
+      const cxMax = Math.floor((tx + 3) / MAP_TREE_STEP);
+      const cyMin = Math.floor((ty - 2) / MAP_TREE_STEP);
+      const cyMax = Math.floor((ty + 9) / MAP_TREE_STEP);
+      for (let cy = cyMin; cy <= cyMax; cy++) {
+        for (let cx = cxMin; cx <= cxMax; cx++) {
+          const tree = mapTreeAtChunk(cx, cy, seed);
+          if (!tree) continue;
+          if (this.deadTrees.has(`tree_${cx}_${cy}`)) continue;
+          const { wx, wy } = tree;
+          if (tx >= wx - 3 && tx <= wx + 3 && ty >= wy - 9 && ty <= wy) return true;
+        }
+      }
+    }
+
+    // Rock: footprint [wx..wx+2] × [wy..wy+2]. No jitter (ROCK_MAX_OFFSET=1→0).
+    // cx ∈ [floor((tx-2)/ROCK_STEP), floor(tx/ROCK_STEP)]
+    // cy ∈ [floor((ty-2)/ROCK_STEP), floor(ty/ROCK_STEP)]
+    {
+      const cxMin = Math.floor((tx - 2) / MAP_ROCK_STEP);
+      const cxMax = Math.floor(tx / MAP_ROCK_STEP);
+      const cyMin = Math.floor((ty - 2) / MAP_ROCK_STEP);
+      const cyMax = Math.floor(ty / MAP_ROCK_STEP);
+      for (let cy = cyMin; cy <= cyMax; cy++) {
+        for (let cx = cxMin; cx <= cxMax; cx++) {
+          const rock = mapRockAtChunk(cx, cy, seed);
+          if (!rock) continue;
+          if (this.deadRocks.has(`rock_${cx}_${cy}`)) continue;
+          const { wx, wy } = rock;
+          if (tx >= wx && tx <= wx + 2 && ty >= wy && ty <= wy + 2) return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  private isEnemyMoveBlocked(px: number, py: number): boolean {
+    const HW = 10; // slightly smaller than player for easier navigation
+    const HH = 14;
+    const minTX = Math.floor((px - HW) / TILE_PX);
+    const maxTX = Math.floor((px + HW - 1) / TILE_PX);
+    const minTY = Math.floor((py - HH) / TILE_PX);
+    const maxTY = Math.floor((py + HH - 1) / TILE_PX);
+    for (let ty = minTY; ty <= maxTY; ty++)
+      for (let tx = minTX; tx <= maxTX; tx++)
+        if (this.isMapTileBlocked(tx, ty)) return true;
+    return false;
+  }
+
+  /** Called every 100ms — moves enemies by stored velocity and broadcasts positions. */
+  private tickEnemyMovement() {
+    // Snapshot player positions once for the whole tick
+    const players: Array<{ x: number; y: number }> = [];
+    this.state.players.forEach((p: PlayerState) => { if (p.isOnline) players.push({ x: p.x, y: p.y }); });
+
+    this.state.enemies.forEach((enemy: EnemyState) => {
+      if (!enemy.isAlive) return;
+      const vel = this.enemyVelocities.get(enemy.id);
+      if (!vel) return;
+
+      const nx = enemy.x + vel.vx;
+      const ny = enemy.y + vel.vy;
+
+      // Find nearest player and check if new position would enter separation radius
+      let nearestPlayer: { x: number; y: number } | null = null;
+      let nearestDist = Infinity;
+      for (const p of players) {
+        const d = Math.hypot(enemy.x - p.x, enemy.y - p.y);
+        if (d < nearestDist) { nearestDist = d; nearestPlayer = p; }
+      }
+
+      const wouldBeBlocked = nearestPlayer
+        ? Math.hypot(nx - nearestPlayer.x, ny - nearestPlayer.y) < PLAYER_ENEMY_SEP_PX
+        : false;
+
+      if (!wouldBeBlocked && !this.isEnemyMoveBlocked(nx, ny)) {
+        enemy.x = nx;
+        enemy.y = ny;
+      } else if (wouldBeBlocked && nearestPlayer) {
+        // Blocked specifically by player — switch to attack stance
+        this.enemyVelocities.set(enemy.id, { vx: 0, vy: 0 });
+        if (!enemy.animKey.startsWith("pierce")) {
+          const dx = nearestPlayer.x - enemy.x;
+          const dy = nearestPlayer.y - enemy.y;
+          const dir = Math.abs(dx) >= Math.abs(dy)
+            ? (dx > 0 ? "right" : "left")
+            : (dy > 0 ? "down" : "up");
+          enemy.animKey = `pierce_${dir}`;
+        }
+      }
+      // else: blocked by map object — keep current anim (walk/wander), AI will repath
+
+      this.broadcast("enemy_update", { id: enemy.id, x: enemy.x, y: enemy.y, animKey: enemy.animKey });
+    });
+  }
+
+  /** Push overlapping enemies apart. */
+  private separateEnemies() {
+    const alive: EnemyState[] = [];
+    this.state.enemies.forEach((e: EnemyState) => { if (e.isAlive) alive.push(e); });
+
+    // Enemy-enemy separation
+    for (let i = 0; i < alive.length; i++) {
+      for (let j = i + 1; j < alive.length; j++) {
+        const a = alive[i];
+        const b = alive[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < ENEMY_SEPARATION_PX && dist > 0.01) {
+          const push = (ENEMY_SEPARATION_PX - dist) * 0.5;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          a.x -= nx * push;
+          a.y -= ny * push;
+          b.x += nx * push;
+          b.y += ny * push;
+        }
+      }
+    }
+  }
+
   // ─── Message Handlers ─────────────────────────────────────────────────────
 
   private registerMessageHandlers() {
@@ -265,6 +625,12 @@ export class GameRoom extends Room<GameRoomOptions> {
       player.activeSlot = data.slot;
     });
 
+    this.onMessage("enter_chunk", (_client, data: { chunkX: number; chunkY: number }) => {
+      for (let dy = -ENEMY_SPAWN_RADIUS; dy <= ENEMY_SPAWN_RADIUS; dy++)
+        for (let dx = -ENEMY_SPAWN_RADIUS; dx <= ENEMY_SPAWN_RADIUS; dx++)
+          this.activateZone(data.chunkX + dx, data.chunkY + dy);
+    });
+
     this.onMessage("action", (client, data: { type: string; x: number; y: number }) => {
       const player = this.state.players.get(client.sessionId);
       if (!player) return;
@@ -288,6 +654,15 @@ export class GameRoom extends Room<GameRoomOptions> {
       if (data.id.startsWith("tree_")) {
         if (this.deadTrees.has(data.id)) return;
         this.deadTrees.set(data.id, 0); // 0 = never respawn
+        // Invalidate map collision cache for this tree's tiles
+        const tParts = data.id.split("_"); // ["tree", cx, cy]
+        const tCx = parseInt(tParts[1]); const tCy = parseInt(tParts[2]);
+        const tTree = mapTreeAtChunk(tCx, tCy, this.state.mapSeed);
+        if (tTree) {
+          for (let dy = -9; dy <= 0; dy++)
+            for (let dx = -3; dx <= 3; dx++)
+              this.mapTileBlockedCache.delete(`${tTree.wx + dx},${tTree.wy + dy}`);
+        }
         this.broadcast("tree_dead", { id: data.id });
         const qty = 2 + Math.floor(Math.random() * 3); // 2–4 wood
         if (player) {
@@ -296,13 +671,44 @@ export class GameRoom extends Room<GameRoomOptions> {
         client.send("harvest_reward", { drops: [{ item: "wood", qty }] });
         console.log(`[GameRoom] ${player?.nickname ?? client.sessionId} harvested ${data.id} → ${qty} wood`);
       } else if (data.id.startsWith("rock_")) {
+        this.deadRocks.add(data.id);
+        // Invalidate map collision cache for this rock's tiles
+        const rParts = data.id.split("_"); // ["rock", cx, cy] (negative coords safe)
+        const rCx = parseInt(rParts[1]); const rCy = parseInt(rParts[2]);
+        const rRock = mapRockAtChunk(rCx, rCy, this.state.mapSeed);
+        if (rRock) {
+          for (let dy = 0; dy <= 2; dy++)
+            for (let dx = 0; dx <= 2; dx++)
+              this.mapTileBlockedCache.delete(`${rRock.wx + dx},${rRock.wy + dy}`);
+        }
         this.broadcast("rock_dead", { id: data.id });
-        const qty = 1 + Math.floor(Math.random() * 2); // 1–2 stone
+        const qty = 1 + Math.floor(Math.random() * 2);
         if (player) {
           for (let i = 0; i < qty; i++) player.inventory.push("stone");
         }
         client.send("harvest_reward", { drops: [{ item: "stone", qty }] });
         console.log(`[GameRoom] ${player?.nickname ?? client.sessionId} harvested ${data.id} → ${qty} stone`);
+      }
+    });
+
+    this.onMessage("attack_enemy", (client, data: { enemyId: string }) => {
+      const player = this.state.players.get(client.sessionId);
+      const enemy  = this.state.enemies.get(data.enemyId);
+      if (!player || !enemy || !enemy.isAlive) return;
+
+      const dist = Math.hypot(enemy.x - player.x, enemy.y - player.y);
+      if (dist > ENEMY_ATTACK_RANGE) return;
+
+      enemy.hp -= 10;
+      this.broadcast("enemy_hit", { id: enemy.id, hp: enemy.hp });
+
+      if (enemy.hp <= 0) {
+        enemy.isAlive = false;
+        enemy.hp = 0;
+        this.broadcast("enemy_dead", { id: enemy.id, x: enemy.x, y: enemy.y });
+        player.inventory.push("raw_meat");
+        client.send("harvest_reward", { drops: [{ item: "raw_meat", qty: 1 }] });
+        console.log(`[GameRoom] ${player.nickname} killed ${enemy.id}`);
       }
     });
   }
