@@ -23,7 +23,8 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ Wieczór 13: Fog of war — per-tile discovered Set, VISION_RADIUS=60 tiles
 - ✅ Wieczór 14: Resource nodes — client-side chunk generation, tree/rock sprites, dead-resource sync, box collision
 - ✅ Wieczór 15: Gameplay polish — inventory HUD, harvest detection fix, sprite destroy-on-death, overlapping footprints fix, tree/rock tuning
-- ⏳ Wieczór 16: Camera deadzone + minimap
+- ✅ Wieczór 16: Camera deadzone + lerp, minimap z mgłą wojny, VISION_RADIUS 60→16
+- ⏳ Wieczór 17: TBD
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
@@ -97,6 +98,23 @@ Gameforge/
 - `move` — x, y, direction, animKey
 - `equip` — slot, itemId
 - `activeSlot` — slot index
+
+## Wieczór 16 additions
+
+### Camera deadzone + lerp
+- `cameras.main.startFollow(followTarget, true, 0.08, 0.08)` — płynne śledzenie (lerp)
+- `cameras.main.setDeadzone(200, 140)` — gracz porusza się swobodnie w centrum bez ruszania kamerą
+
+### Minimap
+- `minimapGfx: Graphics`, scrollFactor 0, depth 25, prawy górny róg `(632, 8)`, rozmiar `160×120` px
+- `MINIMAP_SCALE = 4` — 1 px minimapy = 4 tile świata
+- Pass 1: terrain (trawa `#2a4a2a`, las `#1a6a1a`) dla odkrytych kafelków
+- Pass 2: czarna nakładka 65% dla odkrytych ale zafoggowanych kafelków
+- Drzewa (zielone), kamienie (szare), inni gracze (niebieskie), gracz (biały 3×3)
+
+### Fog of war fix
+- `VISION_RADIUS` zmniejszony z 60 → 16 tile (256px promień)
+- Poprzednia wartość 60 była większa niż połowa przekątnej ekranu → mgła nigdy nie była widoczna
 
 ## Wieczór 15 additions
 

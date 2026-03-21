@@ -53,7 +53,7 @@ const DIR_TO_TOOL: Record<Direction, { suffix: string; flipX: boolean }> = {
 
 const SPEED         = 100;  // px/s
 const SEND_INTERVAL = 50;   // ms
-const VISION_RADIUS = 60;   // tiles
+const VISION_RADIUS = 16;   // tiles — ~256px radius, fog visible on 800×600 screen
 const MAX_WORLD_PX  = 100_000; // soft world edge in pixels from origin
 const PLAYER_HW     = 12;   // collision half-width  px (24px total = 1.5 tiles)
 const PLAYER_HH     = 20;   // collision half-height px (40px total = 2.5 tiles)
@@ -103,6 +103,9 @@ export class PlayScene extends Scene {
   private discovered   = new Set<string>();
   private lastTileX    = Number.MAX_SAFE_INTEGER;
   private lastTileY    = Number.MAX_SAFE_INTEGER;
+
+  // Minimap
+  private minimapGfx!: Phaser.GameObjects.Graphics;
 
   private followTarget!: Phaser.GameObjects.Rectangle;
   private playersOnlineText!: Phaser.GameObjects.Text;
@@ -198,13 +201,17 @@ export class PlayScene extends Scene {
     this.wasd       = this.input.keyboard!.addKeys("W,A,S,D") as Record<string, Phaser.Input.Keyboard.Key>;
     this.actionKeys = this.input.keyboard!.addKeys("SPACE,E")  as Record<string, Phaser.Input.Keyboard.Key>;
 
-    // ── Camera — no bounds, follows invisible target ───────────────────────
+    // ── Camera — deadzone + lerp follow ───────────────────────────────────
     this.followTarget = this.add.rectangle(this.px, this.py, 1, 1).setAlpha(0);
-    this.cameras.main.startFollow(this.followTarget, true);
+    this.cameras.main.startFollow(this.followTarget, true, 0.08, 0.08);
+    this.cameras.main.setDeadzone(200, 140);
 
     // ── Fog of war ─────────────────────────────────────────────────────────
     this.fogGraphics = this.add.graphics().setDepth(8);
     this.revealAround(0, 0);
+
+    // ── Minimap ────────────────────────────────────────────────────────────
+    this.minimapGfx = this.add.graphics().setScrollFactor(0).setDepth(25);
 
     // ── UI overlay ─────────────────────────────────────────────────────────
     const ts = { fontSize: "12px", color: "#ffffff", backgroundColor: "#00000088", padding: { x: 6, y: 3 } };
@@ -613,6 +620,73 @@ export class PlayScene extends Scene {
     }
   }
 
+  // ── Minimap ───────────────────────────────────────────────────────────────
+
+  private drawMinimap(playerTileX: number, playerTileY: number) {
+    const MW = 160; const MH = 120; // minimap size px
+    const MX = 632; const MY = 8;   // top-left corner (screen coords)
+    const SCALE = 4;                 // 1 minimap px = SCALE world tiles
+    const g = this.minimapGfx;
+    g.clear();
+
+    // Background
+    g.fillStyle(0x000000, 0.85);
+    g.fillRect(MX, MY, MW, MH);
+
+    // Pass 1 — terrain (discovered tiles only, full brightness)
+    for (let my = 0; my < MH; my++) {
+      for (let mx = 0; mx < MW; mx++) {
+        const tx = Math.floor(playerTileX + (mx - MW / 2) * SCALE);
+        const ty = Math.floor(playerTileY + (my - MH / 2) * SCALE);
+        if (!this.discovered.has(`${tx},${ty}`)) continue;
+        g.fillStyle(isForestTile(tx, ty, this.mapSeed) ? 0x1a6a1a : 0x2a4a2a, 1);
+        g.fillPoint(MX + mx, MY + my, 1);
+      }
+    }
+
+    // Pass 2 — fog overlay (discovered but outside vision radius)
+    g.fillStyle(0x000000, 0.65);
+    for (let my = 0; my < MH; my++) {
+      for (let mx = 0; mx < MW; mx++) {
+        const tx = Math.floor(playerTileX + (mx - MW / 2) * SCALE);
+        const ty = Math.floor(playerTileY + (my - MH / 2) * SCALE);
+        if (!this.discovered.has(`${tx},${ty}`)) continue;
+        const dtx = tx - playerTileX; const dty = ty - playerTileY;
+        if (dtx * dtx + dty * dty <= VISION_RADIUS * VISION_RADIUS) continue; // in vision — no fog
+        g.fillPoint(MX + mx, MY + my, 1);
+      }
+    }
+
+    // Resources (alive only)
+    this.resourceData.forEach((rd) => {
+      if (!rd.isAlive) return;
+      const mx = Math.round(MW / 2 + (rd.x / TILE_SIZE - playerTileX) / SCALE);
+      const my = Math.round(MH / 2 + (rd.y / TILE_SIZE - playerTileY) / SCALE);
+      if (mx < 1 || mx >= MW - 1 || my < 1 || my >= MH - 1) return;
+      const key = `${Math.floor(rd.x / TILE_SIZE)},${Math.floor(rd.y / TILE_SIZE)}`;
+      if (!this.discovered.has(key)) return;
+      g.fillStyle(rd.type === "tree" ? 0x44cc44 : 0x888888, 1);
+      g.fillPoint(MX + mx, MY + my, 2);
+    });
+
+    // Remote players
+    this.remotePlayers.forEach((remote) => {
+      const mx = Math.round(MW / 2 + (remote.x / TILE_SIZE - playerTileX) / SCALE);
+      const my = Math.round(MH / 2 + (remote.y / TILE_SIZE - playerTileY) / SCALE);
+      if (mx < 1 || mx >= MW - 1 || my < 1 || my >= MH - 1) return;
+      g.fillStyle(0x4488ff, 1);
+      g.fillPoint(MX + mx, MY + my, 3);
+    });
+
+    // Local player — always center
+    g.fillStyle(0xffffff, 1);
+    g.fillRect(MX + MW / 2 - 1, MY + MH / 2 - 1, 3, 3);
+
+    // Border
+    g.lineStyle(1, 0xffffff, 0.4);
+    g.strokeRect(MX, MY, MW, MH);
+  }
+
   // ── Debug grid ────────────────────────────────────────────────────────────
 
   private drawCollision(px: number, py: number) {
@@ -756,6 +830,7 @@ export class PlayScene extends Scene {
     this.drawCollision(this.px, this.py);
     this.drawGrid();
     this.drawFog(tileX, tileY);
+    this.drawMinimap(tileX, tileY);
 
     // Remote player interpolation + visibility (hidden by fog outside vision)
     const visionPx = VISION_RADIUS * TILE_SIZE;
