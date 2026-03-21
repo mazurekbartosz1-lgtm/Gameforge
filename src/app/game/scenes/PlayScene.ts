@@ -290,13 +290,20 @@ export class PlayScene extends Scene {
     const endX   = startX + Math.ceil(cam.width  / TILE_SIZE) + 2;
     const endY   = startY + Math.ceil(cam.height / TILE_SIZE) + 2;
     this.forestGfx.clear();
+
+    // Light forest biome tint
     this.forestGfx.fillStyle(0x1a4a1a, 0.18);
-    for (let ty = startY; ty <= endY; ty++) {
-      for (let tx = startX; tx <= endX; tx++) {
+    for (let ty = startY; ty <= endY; ty++)
+      for (let tx = startX; tx <= endX; tx++)
         if (isForestTile(tx, ty, this.mapSeed))
           this.forestGfx.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-      }
-    }
+
+    // Blocked resource tiles — darker overlay so player can see footprints
+    this.forestGfx.fillStyle(0x000000, 0.30);
+    for (let ty = startY; ty <= endY; ty++)
+      for (let tx = startX; tx <= endX; tx++)
+        if (this.tileToResource.has(`${tx},${ty}`))
+          this.forestGfx.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
   }
 
   // ── Resources ─────────────────────────────────────────────────────────────
@@ -310,12 +317,15 @@ export class PlayScene extends Scene {
     const baseTX = Math.floor(rd.x / TILE_SIZE);
     const baseTY = Math.floor(rd.y / TILE_SIZE);
     if (rd.type === "tree") {
-      // 7 tiles wide (±3), 9 tiles tall (base tile + 8 above)
-      for (let dy = -8; dy <= 0; dy++)
+      // 7 tiles wide (±3), 11 tiles tall — matches 184px sprite height
+      for (let dy = -10; dy <= 0; dy++)
         for (let dx = -3; dx <= 3; dx++)
           this.tileToResource.set(`${baseTX + dx},${baseTY + dy}`, rd.id);
     } else {
-      this.tileToResource.set(`${baseTX},${baseTY}`, rd.id);
+      // Rock: 2×2 tiles = 4 tiles total
+      for (let dy = 0; dy <= 1; dy++)
+        for (let dx = 0; dx <= 1; dx++)
+          this.tileToResource.set(`${baseTX + dx},${baseTY + dy}`, rd.id);
     }
   }
 
@@ -324,11 +334,13 @@ export class PlayScene extends Scene {
     const baseTX = Math.floor(rd.x / TILE_SIZE);
     const baseTY = Math.floor(rd.y / TILE_SIZE);
     if (rd.type === "tree") {
-      for (let dy = -8; dy <= 0; dy++)
+      for (let dy = -10; dy <= 0; dy++)
         for (let dx = -3; dx <= 3; dx++)
           this.tileToResource.delete(`${baseTX + dx},${baseTY + dy}`);
     } else {
-      this.tileToResource.delete(`${baseTX},${baseTY}`);
+      for (let dy = 0; dy <= 1; dy++)
+        for (let dx = 0; dx <= 1; dx++)
+          this.tileToResource.delete(`${baseTX + dx},${baseTY + dy}`);
     }
   }
 
@@ -360,10 +372,12 @@ export class PlayScene extends Scene {
         .setScale(1.0)          // natural pixel size
         .setDepth(2);
     } else {
-      // Rock: frame 52 = row 4, col 0 — medium standalone rock
-      sprite = this.add.image(n.x, n.y, "rocks", 52)
-        .setOrigin(0.5, 0.5)
-        .setScale(1.0)
+      // Rock: 2×2 tiles (32×32px at scale 2). Position at top-left of 2×2 footprint.
+      const bx = Math.floor(n.x / TILE_SIZE) * TILE_SIZE;
+      const by = Math.floor(n.y / TILE_SIZE) * TILE_SIZE;
+      sprite = this.add.image(bx, by, "rocks", 0)
+        .setOrigin(0, 0)
+        .setScale(2.0)
         .setDepth(2);
     }
     sprite.setVisible(false);

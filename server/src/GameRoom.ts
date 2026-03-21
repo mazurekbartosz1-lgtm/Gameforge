@@ -237,8 +237,8 @@ export class GameRoom extends Room<GameRoomOptions> {
     const rng = mulberry32(seed ^ 0xDEADBEEF);
     let trees = 0, rocks = 0;
 
-    const RANGE = 40;
-    const TREE_STEP = 8; // tree footprint is 7×9 tiles — 8-tile step gives ~1 tile gap
+    const RANGE = 60;
+    const TREE_STEP = 12; // tree is 7×11 tiles tall — 12-tile step prevents overlap
 
     // Trees — grid-based placement in forest, one per 5-tile cell with random offset
     for (let gy = -RANGE; gy <= RANGE; gy += TREE_STEP) {
