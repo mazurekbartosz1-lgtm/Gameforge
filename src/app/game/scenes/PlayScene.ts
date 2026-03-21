@@ -83,6 +83,8 @@ export class PlayScene extends Scene {
   private grassBg!: Phaser.GameObjects.TileSprite;
   // Forest overlay — redrawn per frame for camera-visible area
   private forestGfx!: Phaser.GameObjects.Graphics;
+  // Debug grid
+  private gridGfx!: Phaser.GameObjects.Graphics;
   // Fog of war
   private fogGraphics!: Phaser.GameObjects.Graphics;
   private discovered   = new Set<string>();
@@ -138,6 +140,9 @@ export class PlayScene extends Scene {
 
     // ── Forest overlay — redrawn per frame (camera-visible tiles only) ─────
     this.forestGfx = this.add.graphics().setDepth(1);
+
+    // ── Debug grid ──────────────────────────────────────────────────────────
+    this.gridGfx = this.add.graphics().setDepth(7);
 
     // ── Resource textures (procedural, no external assets needed) ──────────
     this.createResourceTextures();
@@ -339,6 +344,32 @@ export class PlayScene extends Scene {
     }
   }
 
+  // ── Debug grid ────────────────────────────────────────────────────────────
+
+  private drawGrid() {
+    const cam = this.cameras.main;
+    const startX = Math.floor(cam.scrollX / TILE_SIZE) * TILE_SIZE;
+    const startY = Math.floor(cam.scrollY / TILE_SIZE) * TILE_SIZE;
+    const endX   = cam.scrollX + cam.width  + TILE_SIZE;
+    const endY   = cam.scrollY + cam.height + TILE_SIZE;
+
+    this.gridGfx.clear();
+    this.gridGfx.lineStyle(1, 0xffffff, 0.12);
+
+    for (let x = startX; x <= endX; x += TILE_SIZE) {
+      this.gridGfx.beginPath();
+      this.gridGfx.moveTo(x, cam.scrollY);
+      this.gridGfx.lineTo(x, endY);
+      this.gridGfx.strokePath();
+    }
+    for (let y = startY; y <= endY; y += TILE_SIZE) {
+      this.gridGfx.beginPath();
+      this.gridGfx.moveTo(cam.scrollX, y);
+      this.gridGfx.lineTo(endX, y);
+      this.gridGfx.strokePath();
+    }
+  }
+
   // ── Forest overlay ────────────────────────────────────────────────────────
 
   private drawForest() {
@@ -441,6 +472,7 @@ export class PlayScene extends Scene {
 
     // Terrain + fog — redrawn every frame (only visible tiles)
     this.drawForest();
+    this.drawGrid();
     this.drawFog(tileX, tileY);
 
     // Remote player interpolation + visibility (hidden by fog outside vision)

@@ -4,8 +4,8 @@ import { Encoder } from "@colyseus/schema";
 import { GameRoom } from "./GameRoom.js";
 import type { Request, Response, NextFunction } from "express";
 
-// 200 ResourceNodes exceed default 8KB schema buffer — increase to 64KB
-Encoder.BUFFER_SIZE = 64 * 1024;
+// Dense resource nodes exceed default buffer — increase to 256KB
+Encoder.BUFFER_SIZE = 256 * 1024;
 
 const PORT = Number(process.env.PORT ?? 2567);
 

@@ -236,40 +236,42 @@ export class GameRoom extends Room<GameRoomOptions> {
   private spawnResources(seed: number) {
     const rng = mulberry32(seed ^ 0xDEADBEEF);
     let trees = 0, rocks = 0;
-    let tries = 0;
 
-    // Trees — placed in forest tiles
-    while (trees < 150 && tries < 3000) {
-      tries++;
-      const wx = Math.floor((rng() - 0.5) * 300);
-      const wy = Math.floor((rng() - 0.5) * 300);
-      if (!isForestTile(wx, wy, seed)) continue;
-      const node = new ResourceNode();
-      node.id = `tree_${trees}`;
-      node.type = "tree";
-      node.x = wx * TILE_SIZE + TILE_SIZE / 2;
-      node.y = wy * TILE_SIZE + TILE_SIZE / 2;
-      node.hp = 5; node.maxHp = 5; node.isAlive = true;
-      this.state.resources.set(node.id, node);
-      trees++;
+    // Trees — scan forest tiles in [-40, 40] range, place 1 tree every ~3 forest tiles
+    const RANGE = 40;
+    for (let wy = -RANGE; wy <= RANGE; wy++) {
+      for (let wx = -RANGE; wx <= RANGE; wx++) {
+        if (!isForestTile(wx, wy, seed)) continue;
+        // ~1/3 of forest tiles get a tree, determined by per-tile hash
+        const h = terrainHash(wx + 999, wy + 999, seed ^ 0xBEEF);
+        if (h > 0.33) continue;
+        const node = new ResourceNode();
+        node.id = `tree_${trees}`;
+        node.type = "tree";
+        node.x = wx * TILE_SIZE + TILE_SIZE / 2;
+        node.y = wy * TILE_SIZE + TILE_SIZE / 2;
+        node.hp = 5; node.maxHp = 5; node.isAlive = true;
+        this.state.resources.set(node.id, node);
+        trees++;
+      }
     }
 
-    // Rocks — placed in open areas
-    tries = 0;
-    while (rocks < 50 && tries < 2000) {
-      tries++;
-      const wx = Math.floor((rng() - 0.5) * 300);
-      const wy = Math.floor((rng() - 0.5) * 300);
-      if (wx * wx + wy * wy < SPAWN_CLEAR_RADIUS * SPAWN_CLEAR_RADIUS) continue;
-      if (isForestTile(wx, wy, seed)) continue;
-      const node = new ResourceNode();
-      node.id = `rock_${rocks}`;
-      node.type = "rock";
-      node.x = wx * TILE_SIZE + TILE_SIZE / 2;
-      node.y = wy * TILE_SIZE + TILE_SIZE / 2;
-      node.hp = 3; node.maxHp = 3; node.isAlive = true;
-      this.state.resources.set(node.id, node);
-      rocks++;
+    // Rocks — open areas, ~1/8 of non-forest tiles outside spawn
+    for (let wy = -RANGE; wy <= RANGE; wy++) {
+      for (let wx = -RANGE; wx <= RANGE; wx++) {
+        if (wx * wx + wy * wy < SPAWN_CLEAR_RADIUS * SPAWN_CLEAR_RADIUS) continue;
+        if (isForestTile(wx, wy, seed)) continue;
+        const h = terrainHash(wx + 777, wy + 777, seed ^ 0xC0DE);
+        if (h > 0.12) continue;
+        const node = new ResourceNode();
+        node.id = `rock_${rocks}`;
+        node.type = "rock";
+        node.x = wx * TILE_SIZE + TILE_SIZE / 2;
+        node.y = wy * TILE_SIZE + TILE_SIZE / 2;
+        node.hp = 3; node.maxHp = 3; node.isAlive = true;
+        this.state.resources.set(node.id, node);
+        rocks++;
+      }
     }
 
     console.log(`[GameRoom] spawned ${trees} trees + ${rocks} rocks`);
