@@ -237,14 +237,18 @@ export class GameRoom extends Room<GameRoomOptions> {
     const rng = mulberry32(seed ^ 0xDEADBEEF);
     let trees = 0, rocks = 0;
 
-    // Trees — scan forest tiles in [-40, 40] range, place 1 tree every ~3 forest tiles
     const RANGE = 40;
-    for (let wy = -RANGE; wy <= RANGE; wy++) {
-      for (let wx = -RANGE; wx <= RANGE; wx++) {
+    const TREE_STEP = 5; // one tree candidate per 5x5 tile cell
+
+    // Trees — grid-based placement in forest, one per 5-tile cell with random offset
+    for (let gy = -RANGE; gy <= RANGE; gy += TREE_STEP) {
+      for (let gx = -RANGE; gx <= RANGE; gx += TREE_STEP) {
+        // Random offset within cell so trees aren't in a perfect grid
+        const h1 = terrainHash(gx, gy, seed ^ 0x1111);
+        const h2 = terrainHash(gx, gy, seed ^ 0x2222);
+        const wx = gx + Math.floor(h1 * TREE_STEP);
+        const wy = gy + Math.floor(h2 * TREE_STEP);
         if (!isForestTile(wx, wy, seed)) continue;
-        // ~1/3 of forest tiles get a tree, determined by per-tile hash
-        const h = terrainHash(wx + 999, wy + 999, seed ^ 0xBEEF);
-        if (h > 0.33) continue;
         const node = new ResourceNode();
         node.id = `tree_${trees}`;
         node.type = "tree";
@@ -256,13 +260,13 @@ export class GameRoom extends Room<GameRoomOptions> {
       }
     }
 
-    // Rocks — open areas, ~1/8 of non-forest tiles outside spawn
+    // Rocks — 2% of open tiles outside spawn
     for (let wy = -RANGE; wy <= RANGE; wy++) {
       for (let wx = -RANGE; wx <= RANGE; wx++) {
         if (wx * wx + wy * wy < SPAWN_CLEAR_RADIUS * SPAWN_CLEAR_RADIUS) continue;
         if (isForestTile(wx, wy, seed)) continue;
         const h = terrainHash(wx + 777, wy + 777, seed ^ 0xC0DE);
-        if (h > 0.12) continue;
+        if (h > 0.02) continue;
         const node = new ResourceNode();
         node.id = `rock_${rocks}`;
         node.type = "rock";

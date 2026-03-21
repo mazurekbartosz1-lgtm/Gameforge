@@ -8,7 +8,7 @@ import {
   ACTION_DIRS,
   type ActionType,
 } from "../animations/toolAnimations";
-import { isForestTile, TILE_SIZE } from "../world/MapGenerator";
+import { isForestTile, TILE_SIZE } from "../world/MapGenerator"; // isForestTile used for movement collision
 import { getRoom } from "../network/ColyseusClient";
 
 type Direction = "down" | "up" | "left" | "right";
@@ -53,7 +53,7 @@ const DIR_TO_TOOL: Record<Direction, { suffix: string; flipX: boolean }> = {
 
 const SPEED         = 100;  // px/s
 const SEND_INTERVAL = 50;   // ms
-const VISION_RADIUS = 10;   // tiles
+const VISION_RADIUS = 60;   // tiles
 const MAX_WORLD_PX  = 100_000; // soft world edge in pixels from origin
 
 export class PlayScene extends Scene {
@@ -81,8 +81,6 @@ export class PlayScene extends Scene {
 
   // Infinite grass background (GPU-tiled, 1 draw call)
   private grassBg!: Phaser.GameObjects.TileSprite;
-  // Forest overlay — redrawn per frame for camera-visible area
-  private forestGfx!: Phaser.GameObjects.Graphics;
   // Debug grid
   private gridGfx!: Phaser.GameObjects.Graphics;
   // Fog of war
@@ -121,9 +119,10 @@ export class PlayScene extends Scene {
 
     preloadToolSprites(this);
 
-    this.load.image("tree_1", "/assets/resources/tree_1.png");
-    this.load.image("tree_2", "/assets/resources/tree_2.png");
-    this.load.image("tree_3", "/assets/resources/tree_3.png");
+    // Tree spritesheet: 4 cols × 2 rows of full trees (448×368, frame 112×184)
+    this.load.spritesheet("tree_sheet", "/assets/resources/tree_sheet.png", { frameWidth: 112, frameHeight: 184 });
+    // Rock spritesheet: 16×16 grid (208×304, frame 16×16)
+    this.load.spritesheet("rocks", "/assets/resources/rocks.png", { frameWidth: 16, frameHeight: 16 });
   }
 
   create() {
@@ -137,9 +136,6 @@ export class PlayScene extends Scene {
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(0);
-
-    // ── Forest overlay — redrawn per frame (camera-visible tiles only) ─────
-    this.forestGfx = this.add.graphics().setDepth(1);
 
     // ── Debug grid ──────────────────────────────────────────────────────────
     this.gridGfx = this.add.graphics().setDepth(7);
@@ -276,37 +272,27 @@ export class PlayScene extends Scene {
   // ── Resources ─────────────────────────────────────────────────────────────
 
   private createResourceTextures() {
-    // Rock: gray with lighter highlight (still procedural — no rock sprite yet)
-    const rockTex = this.textures.createCanvas("res_rock", 32, 32)!;
-    const rc = rockTex.getContext();
-    rc.fillStyle = "#808080";
-    rc.beginPath(); rc.ellipse(16, 18, 13, 9, 0, 0, Math.PI * 2); rc.fill();
-    rc.fillStyle = "#b0b0b0";
-    rc.beginPath(); rc.ellipse(11, 13, 6, 4, 0, 0, Math.PI * 2); rc.fill();
-    rockTex.refresh();
+    // Textures loaded via preload — nothing to generate procedurally
   }
 
   private addResourceSprite(n: ResourceNodeData) {
     this.resourceData.set(n.id, n);
-    let tex: string;
-    let scale: number;
-    let originY: number;
+    let sprite: Phaser.GameObjects.Image;
     if (n.type === "tree") {
-      // Pick one of 3 tree models based on id hash for visual variety
-      const variant = (n.id.charCodeAt(n.id.length - 1) % 3) + 1;
-      tex = `tree_${variant}`;
-      scale = 0.25;
-      originY = 1.0; // anchor at base so trunk sits on ground
+      // Pick one of 8 tree variants (4 cols × 2 rows in spritesheet)
+      const variant = n.id.charCodeAt(n.id.length - 1) % 8;
+      sprite = this.add.image(n.x, n.y, "tree_sheet", variant)
+        .setOrigin(0.5, 1.0)   // anchor at trunk base
+        .setScale(1.0)          // natural pixel size
+        .setDepth(2);
     } else {
-      tex = "res_rock";
-      scale = 1.0;
-      originY = 0.5;
+      // Rock: frame 52 = row 4, col 0 — medium standalone rock
+      sprite = this.add.image(n.x, n.y, "rocks", 52)
+        .setOrigin(0.5, 0.5)
+        .setScale(1.0)
+        .setDepth(2);
     }
-    const sprite = this.add.image(n.x, n.y, tex)
-      .setOrigin(0.5, originY)
-      .setScale(scale)
-      .setDepth(2)
-      .setVisible(false);
+    sprite.setVisible(false);
     this.resourceSprites.set(n.id, sprite);
   }
 
@@ -367,27 +353,6 @@ export class PlayScene extends Scene {
       this.gridGfx.moveTo(cam.scrollX, y);
       this.gridGfx.lineTo(endX, y);
       this.gridGfx.strokePath();
-    }
-  }
-
-  // ── Forest overlay ────────────────────────────────────────────────────────
-
-  private drawForest() {
-    const cam = this.cameras.main;
-    const startX = Math.floor(cam.scrollX / TILE_SIZE) - 1;
-    const startY = Math.floor(cam.scrollY / TILE_SIZE) - 1;
-    const endX   = startX + Math.ceil(cam.width  / TILE_SIZE) + 2;
-    const endY   = startY + Math.ceil(cam.height / TILE_SIZE) + 2;
-
-    this.forestGfx.clear();
-    this.forestGfx.fillStyle(0x0d2b0d, 0.78);
-
-    for (let ty = startY; ty <= endY; ty++) {
-      for (let tx = startX; tx <= endX; tx++) {
-        if (isForestTile(tx, ty, this.mapSeed)) {
-          this.forestGfx.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-        }
-      }
     }
   }
 
@@ -470,8 +435,7 @@ export class PlayScene extends Scene {
     // Background — sync tile UVs with camera scroll so grass appears to move
     this.grassBg.setTilePosition(this.cameras.main.scrollX, this.cameras.main.scrollY);
 
-    // Terrain + fog — redrawn every frame (only visible tiles)
-    this.drawForest();
+    // Grid + fog — redrawn every frame (only visible tiles)
     this.drawGrid();
     this.drawFog(tileX, tileY);
 
