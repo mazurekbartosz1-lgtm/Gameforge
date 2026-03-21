@@ -14,6 +14,7 @@ interface AssetFile {
   groupKey: string;
   groupName: string;
   animLabel: string;
+  isAnim: boolean; // true only for named animation sheets (Idle-Sheet, Walk_Down, etc.)
 }
 
 interface AssetGroup {
@@ -53,6 +54,16 @@ function detectCategory(url: string): string {
   if (u.includes("/props") || u.includes("/structures/") || u.includes("props.png")) return "props";
   if (u.includes("/weapons/") || u.includes("/food/") || u.includes("weapons.png")) return "items";
   return "other";
+}
+
+/** True only for sheets that contain sequential animation frames (not tileset grids). */
+function isAnimSheet(url: string, name: string): boolean {
+  const n = name.toLowerCase();
+  // Pixel Crawler convention: animation sheets use a dash before "sheet" (e.g. Idle-Sheet.png)
+  if (n.includes("-sheet")) return true;
+  // Custom game assets — player animations and action overlays
+  if (url.includes("/player/") || url.includes("/actions/")) return true;
+  return false;
 }
 
 function detectFrameSize(url: string): { w: number; h: number } {
@@ -122,6 +133,7 @@ function processFiles(files: string[]): AssetFile[] {
         frameW: w, frameH: h,
         groupKey, groupName,
         animLabel: getAnimLabel(url),
+        isAnim: isAnimSheet(url, name),
       };
     });
 }
@@ -159,23 +171,37 @@ function useImageDim(url: string): { w: number; h: number } | null {
 // ─── AnimatedSprite ────────────────────────────────────────────────────────────
 
 function AnimatedSprite({
-  url, frameW, frameH, fps = 8, scale = 2, row = 0,
+  url, frameW, frameH, fps = 8, scale = 2, row = 0, animated = true,
 }: {
-  url: string; frameW: number; frameH: number; fps?: number; scale?: number; row?: number;
+  url: string; frameW: number; frameH: number; fps?: number; scale?: number; row?: number; animated?: boolean;
 }) {
   const dim = useImageDim(url);
   const [frame, setFrame] = useState(0);
-  const fW = Math.max(1, frameW);
-  const fH = Math.max(1, frameH);
+  const fW   = Math.max(1, frameW);
+  const fH   = Math.max(1, frameH);
   const cols = dim ? Math.max(1, Math.floor(dim.w / fW)) : 1;
+  const shouldAnim = animated && cols > 1;
 
   useEffect(() => { setFrame(0); }, [url]);
 
   useEffect(() => {
-    if (!dim || cols <= 1) return;
+    if (!shouldAnim) return;
     const id = setInterval(() => setFrame(f => (f + 1) % cols), 1000 / fps);
     return () => clearInterval(id);
-  }, [dim, cols, fps]);
+  }, [shouldAnim, cols, fps]);
+
+  // Static sprite — show the full sheet scaled to fit
+  if (!animated) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={encodeURI(url)}
+        alt=""
+        loading="lazy"
+        style={{ imageRendering: "pixelated", maxWidth: 180, maxHeight: 140, objectFit: "contain", display: "block" }}
+      />
+    );
+  }
 
   const pxW = fW * scale;
   const pxH = fH * scale;
@@ -274,7 +300,7 @@ function AnimationRow({ sheet }: { sheet: AssetFile }) {
           className="rounded overflow-hidden flex-shrink-0"
           style={{ background: "repeating-conic-gradient(#3a3a3a 0% 25%, #252525 0% 50%) 0 0 / 8px 8px", padding: 2 }}
         >
-          <AnimatedSprite url={sheet.url} frameW={sheet.frameW} frameH={sheet.frameH} fps={fps} scale={scale} />
+          <AnimatedSprite url={sheet.url} frameW={sheet.frameW} frameH={sheet.frameH} fps={fps} scale={scale} animated={sheet.isAnim} />
         </div>
 
         <div className="flex-1 min-w-0">
@@ -320,8 +346,11 @@ const CAT_COLOR: Record<string, string> = {
 };
 
 function pickPreview(sheets: AssetFile[]): AssetFile {
-  const find = (re: RegExp) => sheets.find(s => re.test(s.name.toLowerCase()));
-  return find(/idle.*down/) ?? find(/idle/) ?? find(/walk/) ?? find(/run/) ?? sheets[0];
+  // Prefer animation sheets; within those, prefer idle_down → idle → walk → run
+  const anims = sheets.filter(s => s.isAnim);
+  const pool  = anims.length ? anims : sheets;
+  const find  = (re: RegExp) => pool.find(s => re.test(s.name.toLowerCase()));
+  return find(/idle.*down/) ?? find(/idle/) ?? find(/walk/) ?? find(/run/) ?? pool[0];
 }
 
 function GroupCard({ group }: { group: AssetGroup }) {
@@ -341,7 +370,7 @@ function GroupCard({ group }: { group: AssetGroup }) {
           className="rounded-lg overflow-hidden flex-shrink-0"
           style={{ background: "repeating-conic-gradient(#3a3a3a 0% 25%, #252525 0% 50%) 0 0 / 8px 8px", padding: 4 }}
         >
-          <AnimatedSprite url={preview.url} frameW={preview.frameW} frameH={preview.frameH} fps={fps} scale={scale} />
+          <AnimatedSprite url={preview.url} frameW={preview.frameW} frameH={preview.frameH} fps={fps} scale={scale} animated={preview.isAnim} />
         </div>
 
         <div className="flex-1 min-w-0 space-y-1">
