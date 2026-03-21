@@ -354,7 +354,12 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 14: ResourceNodes and FoodNodes on map
+### [x] Wieczór 14: ResourceNodes and FoodNodes on map
+DONE — Client-side chunk generation (treeAtChunk, rockAtChunk), tree_sheet + rocks sprites,
+7×10 tree footprint + 3×3 rock footprint, dead-resource multiplayer sync via
+dead_trees_init / dead_rocks_init / tree_dead / rock_dead / rock_respawn messages.
+Trees never respawn; rocks respawn after 60s. Collision debug overlay added.
+Player box collision (PLAYER_HW=12, PLAYER_HH=20) with sliding + orange attack range viz.
 
 ```
 Spawn ResourceNodes (trees, stones) and FoodNodes (mushrooms, berries) on the map

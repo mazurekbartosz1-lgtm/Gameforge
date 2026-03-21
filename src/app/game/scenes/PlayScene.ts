@@ -8,7 +8,7 @@ import {
   ACTION_DIRS,
   type ActionType,
 } from "../animations/toolAnimations";
-import { isForestTile, TILE_SIZE } from "../world/MapGenerator"; // isForestTile used for movement collision
+import { isForestTile, treeAtChunk, rockAtChunk, TILE_SIZE, TREE_STEP, ROCK_STEP } from "../world/MapGenerator";
 import { getRoom } from "../network/ColyseusClient";
 
 type Direction = "down" | "up" | "left" | "right";
@@ -55,6 +55,8 @@ const SPEED         = 100;  // px/s
 const SEND_INTERVAL = 50;   // ms
 const VISION_RADIUS = 60;   // tiles
 const MAX_WORLD_PX  = 100_000; // soft world edge in pixels from origin
+const PLAYER_HW     = 12;   // collision half-width  px (24px total = 1.5 tiles)
+const PLAYER_HH     = 20;   // collision half-height px (40px total = 2.5 tiles)
 
 export class PlayScene extends Scene {
   // Player world position — starts at world origin (tile 0,0)
@@ -80,6 +82,12 @@ export class PlayScene extends Scene {
   // Tree footprint collision: tile "tx,ty" → resource id
   private tileToResource = new Map<string, string>();
 
+  // Client-side infinite resource generation
+  private generatedTreeChunks = new Set<string>();
+  private generatedRockChunks = new Set<string>();
+  private deadTrees = new Set<string>();
+  private deadRocks = new Set<string>();
+
   private mapSeed = 42;
 
   // Infinite grass background (GPU-tiled, 1 draw call)
@@ -88,6 +96,8 @@ export class PlayScene extends Scene {
   private forestGfx!: Phaser.GameObjects.Graphics;
   // Debug grid
   private gridGfx!: Phaser.GameObjects.Graphics;
+  // Collision debug overlay
+  private collisionGfx!: Phaser.GameObjects.Graphics;
   // Fog of war
   private fogGraphics!: Phaser.GameObjects.Graphics;
   private discovered   = new Set<string>();
@@ -146,7 +156,8 @@ export class PlayScene extends Scene {
     this.forestGfx = this.add.graphics().setDepth(1);
 
     // ── Debug grid ──────────────────────────────────────────────────────────
-    this.gridGfx = this.add.graphics().setDepth(7);
+    this.gridGfx      = this.add.graphics().setDepth(7);
+    this.collisionGfx = this.add.graphics().setDepth(6);
 
     // ── Resource textures (procedural, no external assets needed) ──────────
     this.createResourceTextures();
@@ -200,6 +211,11 @@ export class PlayScene extends Scene {
 
     // ── Multiplayer handlers ────────────────────────────────────────────────
     if (this.room) this.setupMessageHandlers(this.room);
+    else {
+      // offline/solo: no dead-resource list to wait for
+      this.generateTreeChunksAround(0, 0);
+      this.generateRockChunksAround(0, 0);
+    }
   }
 
   // ── Remote players ────────────────────────────────────────────────────────
@@ -275,9 +291,54 @@ export class PlayScene extends Scene {
       const rd = this.resourceData.get(data.id);
       if (!rd) return;
       rd.hp = data.hp;
-      if (rd.isAlive && !data.isAlive) this.unregisterFootprint(rd); // tree felled
-      if (!rd.isAlive && data.isAlive) this.registerFootprint(rd);   // tree respawned
+      if (rd.isAlive && !data.isAlive) this.unregisterFootprint(rd);
+      if (!rd.isAlive && data.isAlive) this.registerFootprint(rd);
       rd.isAlive = data.isAlive;
+    });
+
+    // Client-side resource synchronisation (request after handlers are registered)
+    let deadTreesReady = false;
+    let deadRocksReady = false;
+    const tryInitialGenerate = () => {
+      if (!deadTreesReady || !deadRocksReady) return;
+      this.generateTreeChunksAround(0, 0);
+      this.generateRockChunksAround(0, 0);
+    };
+
+    room.onMessage("dead_trees_init", (ids: string[]) => {
+      ids.forEach((id) => this.deadTrees.add(id));
+      deadTreesReady = true;
+      tryInitialGenerate();
+    });
+    room.send("request_dead_trees", {});
+
+    room.onMessage("dead_rocks_init", (ids: string[]) => {
+      ids.forEach((id) => this.deadRocks.add(id));
+      deadRocksReady = true;
+      tryInitialGenerate();
+    });
+    room.send("request_dead_rocks", {});
+
+    room.onMessage("tree_dead", (data: { id: string }) => {
+      this.deadTrees.add(data.id);
+      const rd = this.resourceData.get(data.id);
+      if (rd && rd.isAlive) { rd.isAlive = false; this.unregisterFootprint(rd); }
+    });
+    room.onMessage("tree_respawn", (data: { id: string }) => {
+      this.deadTrees.delete(data.id);
+      const rd = this.resourceData.get(data.id);
+      if (rd && !rd.isAlive) { rd.isAlive = true; rd.hp = rd.maxHp; this.registerFootprint(rd); }
+    });
+
+    room.onMessage("rock_dead", (data: { id: string }) => {
+      this.deadRocks.add(data.id);
+      const rd = this.resourceData.get(data.id);
+      if (rd && rd.isAlive) { rd.isAlive = false; this.unregisterFootprint(rd); }
+    });
+    room.onMessage("rock_respawn", (data: { id: string }) => {
+      this.deadRocks.delete(data.id);
+      const rd = this.resourceData.get(data.id);
+      if (rd && !rd.isAlive) { rd.isAlive = true; rd.hp = rd.maxHp; this.registerFootprint(rd); }
     });
   }
 
@@ -298,12 +359,7 @@ export class PlayScene extends Scene {
         if (isForestTile(tx, ty, this.mapSeed))
           this.forestGfx.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
 
-    // Blocked resource tiles — darker overlay so player can see footprints
-    this.forestGfx.fillStyle(0x000000, 0.30);
-    for (let ty = startY; ty <= endY; ty++)
-      for (let tx = startX; tx <= endX; tx++)
-        if (this.tileToResource.has(`${tx},${ty}`))
-          this.forestGfx.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+    // (footprint debug overlay removed — trunk-only footprints are too small to be useful as guide)
   }
 
   // ── Resources ─────────────────────────────────────────────────────────────
@@ -312,19 +368,19 @@ export class PlayScene extends Scene {
     // Textures loaded via preload — nothing to generate procedurally
   }
 
-  /** Register the 7×9-tile footprint of a tree (or 1-tile footprint of a rock). */
+  /** Register the footprint of a resource for collision + harvest detection. */
   private registerFootprint(rd: ResourceNodeData) {
     const baseTX = Math.floor(rd.x / TILE_SIZE);
     const baseTY = Math.floor(rd.y / TILE_SIZE);
     if (rd.type === "tree") {
-      // 7 tiles wide (±3), 12 tiles tall — covers full 184px sprite + 8px margin
-      for (let dy = -11; dy <= 0; dy++)
+      // Full sprite footprint: 7 wide (±3), 10 tall (dy -9..0)
+      for (let dy = -9; dy <= 0; dy++)
         for (let dx = -3; dx <= 3; dx++)
           this.tileToResource.set(`${baseTX + dx},${baseTY + dy}`, rd.id);
     } else {
-      // Rock: 2×2 tiles = 4 tiles total
-      for (let dy = 0; dy <= 1; dy++)
-        for (let dx = 0; dx <= 1; dx++)
+      // Rock: 3×3 tiles (scale 3 → 48×48px = 3 tiles)
+      for (let dy = 0; dy <= 2; dy++)
+        for (let dx = 0; dx <= 2; dx++)
           this.tileToResource.set(`${baseTX + dx},${baseTY + dy}`, rd.id);
     }
   }
@@ -334,13 +390,63 @@ export class PlayScene extends Scene {
     const baseTX = Math.floor(rd.x / TILE_SIZE);
     const baseTY = Math.floor(rd.y / TILE_SIZE);
     if (rd.type === "tree") {
-      for (let dy = -11; dy <= 0; dy++)
+      for (let dy = -9; dy <= 0; dy++)
         for (let dx = -3; dx <= 3; dx++)
           this.tileToResource.delete(`${baseTX + dx},${baseTY + dy}`);
     } else {
-      for (let dy = 0; dy <= 1; dy++)
-        for (let dx = 0; dx <= 1; dx++)
+      for (let dy = 0; dy <= 2; dy++)
+        for (let dx = 0; dx <= 2; dx++)
           this.tileToResource.delete(`${baseTX + dx},${baseTY + dy}`);
+    }
+  }
+
+  /** Spawn tree sprites for all TREE_STEP-chunks within vision radius of (tileX, tileY). */
+  private generateTreeChunksAround(tileX: number, tileY: number) {
+    const chunkRadius = Math.ceil(VISION_RADIUS / TREE_STEP) + 2;
+    const playerCX = Math.floor(tileX / TREE_STEP);
+    const playerCY = Math.floor(tileY / TREE_STEP);
+
+    for (let cy = playerCY - chunkRadius; cy <= playerCY + chunkRadius; cy++) {
+      for (let cx = playerCX - chunkRadius; cx <= playerCX + chunkRadius; cx++) {
+        const key = `${cx},${cy}`;
+        if (this.generatedTreeChunks.has(key)) continue;
+        this.generatedTreeChunks.add(key);
+
+        const result = treeAtChunk(cx, cy, this.mapSeed);
+        if (!result) continue;
+
+        const { wx, wy } = result;
+        const id = `tree_${cx}_${cy}`;
+        const x = wx * TILE_SIZE + TILE_SIZE / 2;
+        const y = wy * TILE_SIZE + TILE_SIZE / 2;
+        const isAlive = !this.deadTrees.has(id);
+        this.addResourceSprite({ id, type: "tree", x, y, hp: 5, maxHp: 5, isAlive });
+      }
+    }
+  }
+
+  /** Spawn rock sprites for all ROCK_STEP-chunks within vision radius of (tileX, tileY). */
+  private generateRockChunksAround(tileX: number, tileY: number) {
+    const chunkRadius = Math.ceil(VISION_RADIUS / ROCK_STEP) + 2;
+    const playerCX = Math.floor(tileX / ROCK_STEP);
+    const playerCY = Math.floor(tileY / ROCK_STEP);
+
+    for (let cy = playerCY - chunkRadius; cy <= playerCY + chunkRadius; cy++) {
+      for (let cx = playerCX - chunkRadius; cx <= playerCX + chunkRadius; cx++) {
+        const key = `${cx},${cy}`;
+        if (this.generatedRockChunks.has(key)) continue;
+        this.generatedRockChunks.add(key);
+
+        const result = rockAtChunk(cx, cy, this.mapSeed);
+        if (!result) continue;
+
+        const { wx, wy } = result;
+        const id = `rock_${cx}_${cy}`;
+        const x = wx * TILE_SIZE + TILE_SIZE / 2;
+        const y = wy * TILE_SIZE + TILE_SIZE / 2;
+        const isAlive = !this.deadRocks.has(id);
+        this.addResourceSprite({ id, type: "rock", x, y, hp: 3, maxHp: 3, isAlive });
+      }
     }
   }
 
@@ -365,19 +471,22 @@ export class PlayScene extends Scene {
     if (n.isAlive) this.registerFootprint(n);
     let sprite: Phaser.GameObjects.Image;
     if (n.type === "tree") {
-      // Only frames 0 (green) and 1 (yellow-green) — no bare/winter trees
+      // Frames 0 (green) and 1 (yellow-green) only — no bare/winter trees.
+      // Crop bottom 2 rows (32px) — orange dirt mound below trunk.
+      // Shift y+32 so visible bottom stays at n.y despite crop removing the anchor row.
       const variant = n.id.charCodeAt(n.id.length - 1) % 2;
-      sprite = this.add.image(n.x, n.y, "tree_sheet", variant)
-        .setOrigin(0.5, 1.0)   // anchor at trunk base
-        .setScale(1.0)          // natural pixel size
+      sprite = this.add.image(n.x, n.y + 32, "tree_sheet", variant)
+        .setOrigin(0.5, 1.0)
+        .setScale(1.0)
         .setDepth(2);
+      sprite.setCrop(0, 0, 112, 152); // 184 - 32 = 152px visible
     } else {
-      // Rock: 2×2 tiles (32×32px at scale 2). Position at top-left of 2×2 footprint.
+      // Rock: scale 3 → 48×48px = 3×3 tiles. Frame 18 = row 1 col 5 (most opaque pixels).
       const bx = Math.floor(n.x / TILE_SIZE) * TILE_SIZE;
       const by = Math.floor(n.y / TILE_SIZE) * TILE_SIZE;
-      sprite = this.add.image(bx, by, "rocks", 0)
+      sprite = this.add.image(bx, by, "rocks", 18)
         .setOrigin(0, 0)
-        .setScale(2.0)
+        .setScale(3.0)
         .setDepth(2);
     }
     sprite.setVisible(false);
@@ -419,6 +528,40 @@ export class PlayScene extends Scene {
   }
 
   // ── Debug grid ────────────────────────────────────────────────────────────
+
+  private drawCollision(px: number, py: number) {
+    const cam = this.cameras.main;
+    const startX = Math.floor(cam.scrollX / TILE_SIZE) - 1;
+    const startY = Math.floor(cam.scrollY / TILE_SIZE) - 1;
+    const endX   = startX + Math.ceil(cam.width  / TILE_SIZE) + 2;
+    const endY   = startY + Math.ceil(cam.height / TILE_SIZE) + 2;
+
+    this.collisionGfx.clear();
+
+    // Dark red overlay on all blocked resource tiles
+    this.collisionGfx.fillStyle(0x660000, 0.35);
+    for (let ty = startY; ty <= endY; ty++)
+      for (let tx = startX; tx <= endX; tx++)
+        if (this.tileToResource.has(`${tx},${ty}`))
+          this.collisionGfx.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+
+    // Cyan rectangle — player collision box
+    this.collisionGfx.fillStyle(0x00ffff, 0.40);
+    this.collisionGfx.fillRect(px - PLAYER_HW, py - PLAYER_HH, PLAYER_HW * 2, PLAYER_HH * 2);
+
+    // Orange rectangle — slice attack range in front of player
+    const atkFwd = 48; // px forward reach (3 tiles)
+    const atkSide = 32; // px side reach (2 tiles)
+    let atkX: number, atkY: number, atkW: number, atkH: number;
+    switch (this.direction) {
+      case "down":  atkX = px - atkSide / 2; atkY = py + PLAYER_HH;          atkW = atkSide; atkH = atkFwd; break;
+      case "up":    atkX = px - atkSide / 2; atkY = py - PLAYER_HH - atkFwd; atkW = atkSide; atkH = atkFwd; break;
+      case "left":  atkX = px - PLAYER_HW - atkFwd; atkY = py - atkSide / 2; atkW = atkFwd; atkH = atkSide; break;
+      case "right": atkX = px + PLAYER_HW;           atkY = py - atkSide / 2; atkW = atkFwd; atkH = atkSide; break;
+    }
+    this.collisionGfx.fillStyle(0xff8800, 0.30);
+    this.collisionGfx.fillRect(atkX!, atkY!, atkW!, atkH!);
+  }
 
   private drawGrid() {
     const cam = this.cameras.main;
@@ -494,16 +637,12 @@ export class PlayScene extends Scene {
     const animKey = moving ? `walk_${this.direction}` : `idle_${this.direction}`;
 
     if (moving) {
+      // Slide on X and Y independently for smooth wall-sliding
       const newPx = Phaser.Math.Clamp(this.px + vx * dt, -MAX_WORLD_PX, MAX_WORLD_PX);
-      const newPy = Phaser.Math.Clamp(this.py + vy * dt, -MAX_WORLD_PX, MAX_WORLD_PX);
-      const tileX = Math.floor(newPx / TILE_SIZE);
-      const tileY = Math.floor(newPy / TILE_SIZE);
+      if (!this.isBoxBlocked(newPx, this.py)) this.px = newPx;
 
-      // Blocked only by living tree footprints (not terrain hash)
-      if (!this.tileToResource.has(`${tileX},${tileY}`)) {
-        this.px = newPx;
-        this.py = newPy;
-      }
+      const newPy = Phaser.Math.Clamp(this.py + vy * dt, -MAX_WORLD_PX, MAX_WORLD_PX);
+      if (!this.isBoxBlocked(this.px, newPy)) this.py = newPy;
 
       this.sprites.forEach((s) => { s.x = this.px; s.y = this.py; });
       this.toolSprites.forEach((s) => { s.x = this.px; s.y = this.py; });
@@ -519,6 +658,8 @@ export class PlayScene extends Scene {
       this.lastTileX = tileX;
       this.lastTileY = tileY;
       this.revealAround(tileX, tileY);
+      this.generateTreeChunksAround(tileX, tileY);
+      this.generateRockChunksAround(tileX, tileY);
     }
 
     // Background — sync tile UVs with camera scroll so grass appears to move
@@ -526,6 +667,7 @@ export class PlayScene extends Scene {
 
     // Overlays — redrawn every frame (only visible tiles)
     this.drawForest();
+    this.drawCollision(this.px, this.py);
     this.drawGrid();
     this.drawFog(tileX, tileY);
 
@@ -568,6 +710,16 @@ export class PlayScene extends Scene {
     if (eJustDown && !this.isActionPlaying) {
       const harvestId = this.findAdjacentResource(tileX, tileY);
       if (harvestId) {
+        // Immediate local update so player can't double-harvest
+        if (harvestId.startsWith("tree_")) {
+          this.deadTrees.add(harvestId);
+          const rd = this.resourceData.get(harvestId);
+          if (rd && rd.isAlive) { rd.isAlive = false; this.unregisterFootprint(rd); }
+        } else if (harvestId.startsWith("rock_")) {
+          this.deadRocks.add(harvestId);
+          const rd = this.resourceData.get(harvestId);
+          if (rd && rd.isAlive) { rd.isAlive = false; this.unregisterFootprint(rd); }
+        }
         this.room?.send("harvest", { id: harvestId });
         this.playActionAnim("collect");
       }
@@ -590,5 +742,17 @@ export class PlayScene extends Scene {
       s.setVisible(visible);
       if (visible) { s.setFlipX(flipX); s.play(animKey, true); }
     });
+  }
+
+  /** Returns true if any tile overlapping the player AABB (px±HW, py±HH) is blocked. */
+  private isBoxBlocked(px: number, py: number): boolean {
+    const minTX = Math.floor((px - PLAYER_HW) / TILE_SIZE);
+    const maxTX = Math.floor((px + PLAYER_HW - 1) / TILE_SIZE);
+    const minTY = Math.floor((py - PLAYER_HH) / TILE_SIZE);
+    const maxTY = Math.floor((py + PLAYER_HH - 1) / TILE_SIZE);
+    for (let ty = minTY; ty <= maxTY; ty++)
+      for (let tx = minTX; tx <= maxTX; tx++)
+        if (this.tileToResource.has(`${tx},${ty}`)) return true;
+    return false;
   }
 }

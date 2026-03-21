@@ -440,6 +440,57 @@ Paste `SESSION_START_PROMPT.md` first, then use the Wieczór 6 prompt from `PLAN
 
 ---
 
+## Session 15 — 2026-03-21 (Session 4)
+
+### What was done
+- **Wieczór 14 COMPLETE ✅** — resource nodes (trees, rocks) on infinite procedural map
+- Rewrote `MapGenerator.ts` for chunk-based generation:
+  - `treeAtChunk(cx, cy, seed)` and `rockAtChunk(cx, cy, seed)` — deterministic per-chunk, generate as player walks
+  - `TREE_STEP=7` (2–3 tile crown overlap), `ROCK_STEP=3` (dense), `FOREST_THRESHOLD=0.494` (mostly forest world)
+  - `SPAWN_CLEAR_RADIUS=16`, `SMOOTH_RADIUS=10` (441-cell neighborhood smoothing for organic forest shapes)
+  - `ROCK_BUFFER=0.492` (rocks spawn on open grass tiles only, just below forest threshold)
+- Updated `PlayScene.ts`:
+  - `generateTreeChunksAround` / `generateRockChunksAround` — chunk-cached infinite generation
+  - Tree sprites: `tree_sheet.png`, frame 0–1, scale 1.0, crop (0,0,112,152), origin (0.5, 1.0)
+  - Rock sprites: `rocks.png`, frame 18 (row 1 col 5, most opaque), scale 3.0, origin (0, 0)
+  - Tree footprint: 7×10 tiles (dx –3..3, dy –9..0) in `tileToResource`
+  - Rock footprint: 3×3 tiles (dx 0..2, dy 0..2) in `tileToResource`
+  - Dead-resource sync: waits for both `dead_trees_init` AND `dead_rocks_init` before first generation
+  - Harvest (E key): immediate local kill + `room.send("harvest", {id})`
+  - `PLAYER_HW=12`, `PLAYER_HH=20` — box collision (24×40px) with `isBoxBlocked()`
+  - Sliding movement: X and Y checked independently against `isBoxBlocked`
+  - `drawCollision`: cyan box (player), orange directional rect (attack range), dark red (resource tiles)
+- Updated `GameRoom.ts`:
+  - Removed server-side resource spawning entirely (all client-side)
+  - `deadTrees: Map<string,number>`, `deadRocks: Map<string,number>` for multiplayer sync
+  - Handlers: `request_dead_trees/rocks`, `harvest` (→ `tree_dead`/`rock_dead` broadcast)
+  - `respawnDeadRocks` in tick (60s); trees permanent (no respawn)
+
+### Decisions made
+- Trees never respawn (resource is permanently harvested like in Don't Starve)
+- Rocks respawn after 60s
+- All resource positions are client-generated and deterministic from `mapSeed` — server only tracks dead state
+- `ROCK_BUFFER=0.492` (just below `FOREST_THRESHOLD=0.494`) means rocks spawn on all open/grass tiles
+- Full 7×10 tree footprint preferred over trunk-only (user explicitly rejected trunk-only)
+- Player box collision (HW=12, HH=20) with independent X/Y checks for sliding movement
+- Debug overlay always visible (collision box + attack range) — to be toggled or removed in future polish pass
+
+### Problems encountered
+- `ROCK_BUFFER=0.43` (too low) → no rocks appeared on map. Fixed by raising to `0.492`
+- Rock sprite frame 13 was empty/transparent watermark row. Fixed: frame 18 (row 1 col 5)
+- Dark footprint overlay at `TREE_STEP=5` covered entire screen. Fixed: raised to `TREE_STEP=7`
+- Player collision: single-tile check let player clip through trees at edges. Fixed: full AABB `isBoxBlocked`
+
+### Next step
+**Wieczór 15** — Gameplay polish pass:
+- Tune or toggle collision debug overlay (hide in normal play, toggle with F1/F2 key)
+- Inventory system: E harvests resource → adds item to `player.inventory[]` (wood/stone)
+- Show inventory in UI (hotbar row at bottom, 8 slots)
+- Resource drop: harvested tree drops 2–4 wood items, rock drops 1–2 stone items
+- Colyseus: send updated inventory back from server on harvest
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-20 (Session 3, end of Wieczór 8)
+2026-03-21 (Session 4, end of Wieczór 14)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -14,10 +14,15 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ Wieczór 3: Colyseus deployed on Railway (`gameforge-production-d7c8.up.railway.app`)
 - ✅ Wieczór 4: Phaser 3.90.0 installed, first sprite displayed in browser
 - ✅ Wieczór 5: WorldState schema complete (all 6 schemas in `server/src/GameRoom.ts`)
-- ✅ Wieczór 6: Body_A animations complete — 8 directions, grass background, scale ×1.5, cycling demo
-- ✅ Wieczór 7: Player movement synchronized via Colyseus — WASD/arrows, sends `move` every 50ms
+- ✅ Wieczór 6: Body_A animations — 8 directions, scale ×1.5
+- ✅ Wieczór 7: Player movement synchronized via Colyseus — WASD/arrows, `move` every 50ms
 - ✅ Wieczór 8: Remote players rendered with interpolation — nickname labels, lerp 0.2
-- ⏳ Wieczór 9: Tool and attack animations — NEXT
+- ✅ Wieczór 9: Tool and attack animations — slice/collect/crush/pierce in 3 dirs
+- ✅ Wieczór 10: Multiplayer test — CORS fix, "Players online: N" overlay
+- ✅ Wieczór 11+12: Procedural infinite world — hash-based terrain, TileSprite grass, forest overlay
+- ✅ Wieczór 13: Fog of war — per-tile discovered Set, VISION_RADIUS=60 tiles
+- ✅ Wieczór 14: Resource nodes — client-side chunk generation, tree/rock sprites, dead-resource sync, box collision
+- ⏳ Wieczór 15: Gameplay polish — collision tuning, inventory, resource drop items
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
@@ -91,6 +96,46 @@ Gameforge/
 - `move` — x, y, direction, animKey
 - `equip` — slot, itemId
 - `activeSlot` — slot index
+
+## Wieczór 14 additions
+
+### New files / major changes
+- `src/app/game/world/MapGenerator.ts` — rewritten: `treeAtChunk(cx,cy,seed)`, `rockAtChunk(cx,cy,seed)`, `isForestTile(wx,wy,seed)`, constants `TREE_STEP=7`, `ROCK_STEP=3`, `FOREST_THRESHOLD=0.494`, `SPAWN_CLEAR_RADIUS=16`, `SMOOTH_RADIUS=10`
+- `src/app/game/scenes/PlayScene.ts` — client-side infinite chunk generation, tree/rock sprites, footprint collision, dead-resource sync, box collision with sliding, debug overlay
+
+### Client-side chunk generation
+- Trees generated with `generateTreeChunksAround(tileX, tileY)` — radius `ceil(VISION_RADIUS/TREE_STEP)+2` chunks
+- Rocks generated with `generateRockChunksAround(tileX, tileY)` — radius `ceil(VISION_RADIUS/ROCK_STEP)+2` chunks
+- Each chunk generated once and cached in `generatedTreeChunks`/`generatedRockChunks` (Set of `"cx,cy"`)
+- Triggers on tile-change only — fires alongside fog reveal
+
+### Resource sprites
+- **Tree** — `tree_sheet.png` (4×2 frames, 112×184px each), frame 0 or 1, scale 1.0, cropped to 112×152 (removes dirt mound), origin (0.5, 1.0)
+- **Rock** — `rocks.png` (13 cols × 19 rows, 16×16 frames), frame 18 (row 1 col 5, most opaque), scale 3.0, origin (0, 0)
+
+### Collision footprints (`tileToResource` map)
+- **Tree**: 7 wide (dx –3..+3) × 10 tall (dy –9..0) — full sprite coverage
+- **Rock**: 3×3 tiles (dx 0..2, dy 0..2) — matches 48×48px scaled sprite
+
+### Dead-resource multiplayer sync
+- Server: `deadTrees: Map<string,number>` and `deadRocks: Map<string,number>` (id → respawnAt)
+- Messages: `request_dead_trees` → `dead_trees_init`, `request_dead_rocks` → `dead_rocks_init`
+- Broadcast on harvest: `tree_dead`, `rock_dead`; on respawn: `rock_respawn` (trees never respawn)
+- Client waits for BOTH `dead_trees_init` AND `dead_rocks_init` before initial generation (`tryInitialGenerate` barrier)
+
+### Player collision box
+- `PLAYER_HW=12`, `PLAYER_HH=20` — 24×40px box centered at `(px, py)`
+- `isBoxBlocked(px, py)` — checks every tile overlapping the AABB against `tileToResource`
+- Sliding movement: X and Y checked independently (player slides along wall edges)
+
+### Collision debug overlay (`collisionGfx`, depth 6)
+- Dark red (0x660000, 35%) on all blocked resource tiles
+- Cyan rectangle (0x00ffff, 40%) — player collision box
+- Orange rectangle (0xff8800, 30%) — slice attack range (48px forward, 32px wide) based on `this.direction`
+
+### Server simplification
+- `ResourceNode` entries removed from server (all client-side) — no `spawnResources`, no server-side terrain functions
+- `Encoder.BUFFER_SIZE` raised to 256 KB in `index.ts` for large initial state patches
 
 ## Wieczór 8 additions
 

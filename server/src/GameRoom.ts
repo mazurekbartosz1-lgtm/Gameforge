@@ -90,41 +90,6 @@ export class WorldState extends Schema {
   @type("uint32") mapSeed: number = 0;    // procedural map seed — same for all players in room
 }
 
-// ─── Seeded PRNG (mulberry32) ────────────────────────────────────────────────
-
-function mulberry32(seed: number) {
-  return function () {
-    seed = (seed + 0x6D2B79F5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-// Mirror of client MapGenerator.isForestTile — kept in sync manually
-const SPAWN_CLEAR_RADIUS = 22;
-const SMOOTH_RADIUS      = 10;
-const SMOOTH_CELLS       = (2 * SMOOTH_RADIUS + 1) ** 2;
-const FOREST_THRESHOLD   = 0.522;
-const TILE_SIZE          = 16;
-
-function terrainHash(wx: number, wy: number, seed: number): number {
-  let h = (seed ^ Math.imul(wx, 374761393) ^ Math.imul(wy, 668265263)) | 0;
-  h = (h + 0x6D2B79F5) | 0;
-  let t = Math.imul(h ^ (h >>> 15), 1 | h);
-  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-}
-
-function isForestTile(wx: number, wy: number, seed: number): boolean {
-  if (wx * wx + wy * wy < SPAWN_CLEAR_RADIUS * SPAWN_CLEAR_RADIUS) return false;
-  let sum = 0;
-  for (let dy = -SMOOTH_RADIUS; dy <= SMOOTH_RADIUS; dy++)
-    for (let dx = -SMOOTH_RADIUS; dx <= SMOOTH_RADIUS; dx++)
-      sum += terrainHash(wx + dx, wy + dy, seed);
-  return sum / SMOOTH_CELLS > FOREST_THRESHOLD;
-}
-
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const TICK_RATE = 1000;          // ms between ticks
@@ -138,11 +103,15 @@ const SANITY_DAY_REGEN = 0.5 / (TICK_RATE / 1000);
 export class GameRoom extends Room<GameRoomOptions> {
   maxClients = 16;
 
+  /** Client-generated resources harvested by players: id → respawn timestamp. */
+  private deadTrees = new Map<string, number>();
+  private deadRocks = new Map<string, number>();
+
   onCreate(_options: any) {
     const state = new WorldState();
     state.mapSeed = Math.floor(Math.random() * 2_147_483_647); // random uint31
     this.setState(state);
-    this.spawnResources(state.mapSeed);
+    // Trees and rocks are generated client-side — no server spawning needed.
     this.setSimulationInterval(() => this.tick(), TICK_RATE);
     this.registerMessageHandlers();
     console.log(`[GameRoom] created – roomId: ${this.roomId}, seed: ${state.mapSeed}`);
@@ -167,12 +136,7 @@ export class GameRoom extends Room<GameRoomOptions> {
     });
     client.send("players_init", existing);
 
-    // Send all resource nodes to the new client
-    const resources: object[] = [];
-    this.state.resources.forEach((node) => {
-      resources.push({ id: node.id, type: node.type, x: node.x, y: node.y, hp: node.hp, maxHp: node.maxHp, isAlive: node.isAlive });
-    });
-    client.send("resources_init", resources);
+    // Trees and rocks are client-generated; dead state is sent on request.
 
     // Notify everyone else about the new player
     this.broadcast("player_add", {
@@ -205,6 +169,8 @@ export class GameRoom extends Room<GameRoomOptions> {
     this.updateWorldTime(now);
     this.drainHungerAndSanity();
     this.respawnNodes(now);
+    // Trees do not respawn (permanent harvest)
+    this.respawnDeadRocks(now);
   }
 
   private updateWorldTime(now: number) {
@@ -233,52 +199,13 @@ export class GameRoom extends Room<GameRoomOptions> {
     });
   }
 
-  private spawnResources(seed: number) {
-    const rng = mulberry32(seed ^ 0xDEADBEEF);
-    let trees = 0, rocks = 0;
-
-    const RANGE = 80;
-    const TREE_STEP = 14; // footprint is 7×12 tiles — 14-tile step guarantees 2-tile gap
-    const MAX_OFFSET = 2; // small jitter so trees aren't a perfect grid
-
-    // Trees — fixed grid with tiny offset; offset << TREE_STEP prevents overlap
-    for (let gy = -RANGE; gy <= RANGE; gy += TREE_STEP) {
-      for (let gx = -RANGE; gx <= RANGE; gx += TREE_STEP) {
-        const h1 = terrainHash(gx, gy, seed ^ 0x1111);
-        const h2 = terrainHash(gx, gy, seed ^ 0x2222);
-        const wx = gx + Math.floor(h1 * MAX_OFFSET);
-        const wy = gy + Math.floor(h2 * MAX_OFFSET);
-        if (!isForestTile(wx, wy, seed)) continue;
-        const node = new ResourceNode();
-        node.id = `tree_${trees}`;
-        node.type = "tree";
-        node.x = wx * TILE_SIZE + TILE_SIZE / 2;
-        node.y = wy * TILE_SIZE + TILE_SIZE / 2;
-        node.hp = 5; node.maxHp = 5; node.isAlive = true;
-        this.state.resources.set(node.id, node);
-        trees++;
+  private respawnDeadRocks(now: number) {
+    this.deadRocks.forEach((respawnAt, id) => {
+      if (now >= respawnAt) {
+        this.deadRocks.delete(id);
+        this.broadcast("rock_respawn", { id });
       }
-    }
-
-    // Rocks — 2% of open tiles outside spawn
-    for (let wy = -RANGE; wy <= RANGE; wy++) {
-      for (let wx = -RANGE; wx <= RANGE; wx++) {
-        if (wx * wx + wy * wy < SPAWN_CLEAR_RADIUS * SPAWN_CLEAR_RADIUS) continue;
-        if (isForestTile(wx, wy, seed)) continue;
-        const h = terrainHash(wx + 777, wy + 777, seed ^ 0xC0DE);
-        if (h > 0.02) continue;
-        const node = new ResourceNode();
-        node.id = `rock_${rocks}`;
-        node.type = "rock";
-        node.x = wx * TILE_SIZE + TILE_SIZE / 2;
-        node.y = wy * TILE_SIZE + TILE_SIZE / 2;
-        node.hp = 3; node.maxHp = 3; node.isAlive = true;
-        this.state.resources.set(node.id, node);
-        rocks++;
-      }
-    }
-
-    console.log(`[GameRoom] spawned ${trees} trees + ${rocks} rocks`);
+    });
   }
 
   private respawnNodes(now: number) {
@@ -295,6 +222,15 @@ export class GameRoom extends Room<GameRoomOptions> {
       if (!food.isAlive && food.respawnAt > 0 && now >= food.respawnAt) {
         food.isAlive = true;
         food.respawnAt = 0;
+      }
+    });
+  }
+
+  private respawnDeadTrees(now: number) {
+    this.deadTrees.forEach((respawnAt, id) => {
+      if (now >= respawnAt) {
+        this.deadTrees.delete(id);
+        this.broadcast("tree_respawn", { id });
       }
     });
   }
@@ -355,17 +291,27 @@ export class GameRoom extends Room<GameRoomOptions> {
       client.send("resources_init", resources);
     });
 
+    this.onMessage("request_dead_trees", (client) => {
+      client.send("dead_trees_init", Array.from(this.deadTrees.keys()));
+    });
+
+    this.onMessage("request_dead_rocks", (client) => {
+      client.send("dead_rocks_init", Array.from(this.deadRocks.keys()));
+    });
+
     this.onMessage("harvest", (client, data: { id: string }) => {
-      const node = this.state.resources.get(data.id);
-      if (!node || !node.isAlive) return;
-      node.hp = Math.max(0, node.hp - 1);
-      if (node.hp <= 0) {
-        node.isAlive = false;
-        node.respawnAt = Date.now() + 60_000; // 60 s respawn
-      }
-      this.broadcast("resource_update", { id: data.id, hp: node.hp, isAlive: node.isAlive });
       const player = this.state.players.get(client.sessionId);
-      console.log(`[GameRoom] ${player?.nickname ?? client.sessionId} harvested ${data.id} (hp: ${node.hp})`);
+      if (data.id.startsWith("tree_")) {
+        if (this.deadTrees.has(data.id)) return;
+        this.deadTrees.set(data.id, Date.now() + 60_000);
+        this.broadcast("tree_dead", { id: data.id });
+        console.log(`[GameRoom] ${player?.nickname ?? client.sessionId} harvested ${data.id}`);
+      } else if (data.id.startsWith("rock_")) {
+        if (this.deadRocks.has(data.id)) return;
+        this.deadRocks.set(data.id, Date.now() + 60_000);
+        this.broadcast("rock_dead", { id: data.id });
+        console.log(`[GameRoom] ${player?.nickname ?? client.sessionId} harvested ${data.id}`);
+      }
     });
   }
 }
