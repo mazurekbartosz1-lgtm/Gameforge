@@ -645,6 +645,43 @@ Pamiętaj: dodać `SUPABASE_URL` i `SUPABASE_SERVICE_ROLE_KEY` do `server/.env` 
 
 ---
 
+## Session 21 — 2026-03-23 (Session 9)
+
+### What was done
+- Stworzono `STITCH_BRIEF.md` — pełny design brief dla 8 ekranów Gameforge (Home, Status, Game+HUD, Objects, Inventory, Loot, Build, Leaderboard)
+- Wysłano brief do Google Stitch MCP; utworzono projekt "Gameforge — Neon Quest UI" (ID: `11496012017862414056`) — Stitch wygenerował design system zgodny z briefem
+- **PlayerPanel.tsx** — pełny redesign wg Stitch konceptu (screenshot jako referencja):
+  - "OPERATOR" eyebrow + "DAY N ☀" / "NIGHT N 🌙" (licznik dni client-side — inkrementuje przy przejściu `isNight: true→false`)
+  - Sekcja TACTICAL_MAP z `<canvas id="minimap-canvas">` + wyświetlanie X/Y tile gracza
+  - Etykiety sekcji jasniejsze (`#a9a9c2`)
+  - COMBAT tile: `2px solid` accent border top+right; OBRONA poprawny `#00e3fd`
+  - Sloty ekwipunku: kolorowe symbole tekstowe (✕/◆/◉/+) zamiast emoji
+  - Sekcja QUEST_OBJ z ★★☆; szerokość sidebar 216px
+- **PlayScene.ts** — minimap przeniesiona z Phaser Graphics na HTML canvas:
+  - `minimapGfx` całkowicie usunięty
+  - `drawMinimap()` rewrite: `ImageData` + `putImageData` (1 draw call dla terenu, 19 200× szybciej niż fillRect)
+  - Mgła: single pass z dim-factor 0.35 (zamiast double pass)
+  - Emituje `gamePosition: {x, y}` event co klatkę
+- **HomeAuth.tsx** + **page.tsx** — fix Clerk SignIn wychodził poza 320px kontener:
+  - `appearance.elements`: `rootBox/card/cardBox` → `width: 100%`, transparent background, box-shadow: none
+  - Panel: `overflow: hidden` jako failsafe
+
+### Decisions made
+- Minimap renderowana na HTML canvas zamiast Phaser Graphics — naturalne pod sidebar React; `ImageData` zamiast `fillRect` znacznie wydajniejszy (1 GPU upload vs ~19K calls/frame)
+- Licznik dni po stronie klienta (nie serwer) — nie wymaga zmian w schemacie ani ticku serwera
+- Sidebar zmniejszony do 216px (był 240px) — mniej miejsca zajmuje, więcej dla canvas gry
+- Clerk SignIn: `appearance.elements` zamiast CSS — oficjalne API Clerk, nie hacki DOM
+
+### Problems encountered
+- Clerk `<SignIn>` renderuje własną kartę z hard-coded szerokością, która wychodziła poza 320px glassmorphism panel na stronie głównej
+- Stitch `list_screens` zwracał `{}` (ekrany przetwarzane asynchronicznie) — projekt widoczny bezpośrednio w stitch.google.com
+
+### Next step
+**Wieczór 20** — Zapis/odczyt stanu gracza z Supabase (load on join, save on leave).
+Pamiętaj: dodać `SUPABASE_URL` i `SUPABASE_SERVICE_ROLE_KEY` do `server/.env` i Railway przed testem.
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

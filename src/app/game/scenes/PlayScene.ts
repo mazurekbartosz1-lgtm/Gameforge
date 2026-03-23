@@ -123,8 +123,9 @@ export class PlayScene extends Scene {
   private lastEnemyZoneX = Number.MAX_SAFE_INTEGER;
   private lastEnemyZoneY = Number.MAX_SAFE_INTEGER;
 
-  // Minimap
-  private minimapGfx!: Phaser.GameObjects.Graphics;
+  // Minimap — rendered to the HTML canvas #minimap-canvas in the React sidebar
+  private minimapCanvas: HTMLCanvasElement | null = null;
+  private minimapCtx: CanvasRenderingContext2D | null = null;
 
   private followTarget!: Phaser.GameObjects.Rectangle;
   private playersOnlineText!: Phaser.GameObjects.Text;
@@ -242,8 +243,7 @@ export class PlayScene extends Scene {
     this.fogGraphics = this.add.graphics().setDepth(8);
     this.revealAround(0, 0);
 
-    // ── Minimap ────────────────────────────────────────────────────────────
-    this.minimapGfx = this.add.graphics().setScrollFactor(0).setDepth(25);
+    // ── Minimap — uses the HTML canvas in the React sidebar ───────────────
 
     // ── UI overlay ─────────────────────────────────────────────────────────
     const ts = { fontSize: "12px", color: "#ffffff", backgroundColor: "#00000088", padding: { x: 6, y: 3 } };
@@ -776,53 +776,59 @@ export class PlayScene extends Scene {
     }
   }
 
-  // ── Minimap ───────────────────────────────────────────────────────────────
+  // ── Minimap — draws to #minimap-canvas in the React sidebar ─────────────
 
   private drawMinimap(playerTileX: number, playerTileY: number) {
-    const MW = 160; const MH = 120; // minimap size px
-    const MX = 632; const MY = 8;   // top-left corner (screen coords)
-    const SCALE = 4;                 // 1 minimap px = SCALE world tiles
-    const g = this.minimapGfx;
-    g.clear();
+    const MW = 160; const MH = 120;
+    const SCALE = 4; // 1 minimap px = SCALE world tiles
 
-    // Background
-    g.fillStyle(0x000000, 0.85);
-    g.fillRect(MX, MY, MW, MH);
+    // Emit position for X/Y display in the sidebar
+    window.dispatchEvent(new CustomEvent("gamePosition", { detail: { x: playerTileX, y: playerTileY } }));
 
-    // Pass 1 — terrain (discovered tiles only, full brightness)
-    for (let my = 0; my < MH; my++) {
-      for (let mx = 0; mx < MW; mx++) {
-        const tx = Math.floor(playerTileX + (mx - MW / 2) * SCALE);
-        const ty = Math.floor(playerTileY + (my - MH / 2) * SCALE);
-        if (!this.discovered.has(`${tx},${ty}`)) continue;
-        g.fillStyle(isForestTile(tx, ty, this.mapSeed) ? 0x1a6a1a : 0x2a4a2a, 1);
-        g.fillPoint(MX + mx, MY + my, 1);
-      }
+    // Lazy-acquire canvas reference (DOM lookup once, then cached)
+    if (!this.minimapCanvas) {
+      this.minimapCanvas = document.getElementById("minimap-canvas") as HTMLCanvasElement | null;
+      this.minimapCtx = this.minimapCanvas?.getContext("2d") ?? null;
     }
+    const ctx = this.minimapCtx;
+    if (!ctx) return;
 
-    // Pass 2 — fog overlay (discovered but outside vision radius)
-    g.fillStyle(0x000000, 0.65);
+    // Build pixel data in one pass (terrain + fog combined) for performance
+    const imageData = ctx.createImageData(MW, MH);
+    const d = imageData.data;
+
     for (let my = 0; my < MH; my++) {
       for (let mx = 0; mx < MW; mx++) {
         const tx = Math.floor(playerTileX + (mx - MW / 2) * SCALE);
         const ty = Math.floor(playerTileY + (my - MH / 2) * SCALE);
-        if (!this.discovered.has(`${tx},${ty}`)) continue;
+        const i = (my * MW + mx) * 4;
+        if (!this.discovered.has(`${tx},${ty}`)) {
+          // Undiscovered — black
+          d[i] = 0; d[i + 1] = 0; d[i + 2] = 0; d[i + 3] = 217;
+          continue;
+        }
         const dtx = tx - playerTileX; const dty = ty - playerTileY;
-        if (dtx * dtx + dty * dty <= VISION_RADIUS * VISION_RADIUS) continue; // in vision — no fog
-        g.fillPoint(MX + mx, MY + my, 1);
+        const inVision = dtx * dtx + dty * dty <= VISION_RADIUS * VISION_RADIUS;
+        const forest = isForestTile(tx, ty, this.mapSeed);
+        // Dim discovered-but-fogged tiles
+        const bright = inVision ? 1 : 0.35;
+        d[i]     = Math.round((forest ? 0x1a : 0x2a) * bright);
+        d[i + 1] = Math.round((forest ? 0x6a : 0x4a) * bright);
+        d[i + 2] = Math.round((forest ? 0x1a : 0x2a) * bright);
+        d[i + 3] = 255;
       }
     }
+    ctx.putImageData(imageData, 0, 0);
 
-    // Resources (alive only)
+    // Resources (alive, discovered)
     this.resourceData.forEach((rd) => {
       if (!rd.isAlive) return;
       const mx = Math.round(MW / 2 + (rd.x / TILE_SIZE - playerTileX) / SCALE);
       const my = Math.round(MH / 2 + (rd.y / TILE_SIZE - playerTileY) / SCALE);
       if (mx < 1 || mx >= MW - 1 || my < 1 || my >= MH - 1) return;
-      const key = `${Math.floor(rd.x / TILE_SIZE)},${Math.floor(rd.y / TILE_SIZE)}`;
-      if (!this.discovered.has(key)) return;
-      g.fillStyle(rd.type === "tree" ? 0x44cc44 : 0x888888, 1);
-      g.fillPoint(MX + mx, MY + my, 2);
+      if (!this.discovered.has(`${Math.floor(rd.x / TILE_SIZE)},${Math.floor(rd.y / TILE_SIZE)}`)) return;
+      ctx.fillStyle = rd.type === "tree" ? "#44cc44" : "#888888";
+      ctx.fillRect(mx, my, 2, 2);
     });
 
     // Remote players
@@ -830,17 +836,18 @@ export class PlayScene extends Scene {
       const mx = Math.round(MW / 2 + (remote.x / TILE_SIZE - playerTileX) / SCALE);
       const my = Math.round(MH / 2 + (remote.y / TILE_SIZE - playerTileY) / SCALE);
       if (mx < 1 || mx >= MW - 1 || my < 1 || my >= MH - 1) return;
-      g.fillStyle(0x4488ff, 1);
-      g.fillPoint(MX + mx, MY + my, 3);
+      ctx.fillStyle = "#4488ff";
+      ctx.fillRect(mx, my, 3, 3);
     });
 
     // Local player — always center
-    g.fillStyle(0xffffff, 1);
-    g.fillRect(MX + MW / 2 - 1, MY + MH / 2 - 1, 3, 3);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(MW / 2 - 1, MH / 2 - 1, 3, 3);
 
-    // Border
-    g.lineStyle(1, 0xffffff, 0.4);
-    g.strokeRect(MX, MY, MW, MH);
+    // Orange border
+    ctx.strokeStyle = "rgba(255,140,0,0.5)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, 0, MW, MH);
   }
 
   // ── Debug grid ────────────────────────────────────────────────────────────

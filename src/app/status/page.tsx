@@ -15,35 +15,87 @@ const COLYSEUS_HTTP = (process.env.NEXT_PUBLIC_COLYSEUS_URL ?? "ws://localhost:2
   .replace(/^wss:\/\//, "https://")
   .replace(/^ws:\/\//, "http://");
 
-function StatusDot({ ok }: { ok: boolean }) {
+const S = {
+  display: "var(--font-display), 'Space Grotesk', sans-serif",
+  body: "var(--font-body), 'Plus Jakarta Sans', sans-serif",
+};
+
+function StatusPip({ ok }: { ok: boolean }) {
   return (
-    <span className={`inline-block w-2.5 h-2.5 rounded-full ${ok ? "bg-green-400" : "bg-red-500"}`} />
+    <span style={{
+      display: "inline-block",
+      width: 8,
+      height: 8,
+      flexShrink: 0,
+      background: ok ? "#4ade80" : "#f87171",
+      boxShadow: ok ? "0 0 8px #4ade80" : "0 0 8px #f87171",
+    }} />
   );
 }
 
 function ServiceCard({
-  name,
-  ok,
-  details,
+  name, ok, details,
 }: {
   name: string;
   ok: boolean;
   details: { label: string; value: string | number }[];
 }) {
   return (
-    <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5 flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <StatusDot ok={ok} />
-        <span className="text-white font-semibold text-sm">{name}</span>
-        <span className={`ml-auto text-xs font-medium ${ok ? "text-green-400" : "text-red-400"}`}>
-          {ok ? "online" : "offline"}
+    <div style={{
+      background: "#0e0f22",
+      borderTop: `2px solid ${ok ? "#4ade80" : "#f87171"}`,
+      borderRight: "1px solid rgba(70,70,91,0.4)",
+      borderBottom: "1px solid rgba(70,70,91,0.4)",
+      borderLeft: "1px solid rgba(70,70,91,0.4)",
+      padding: 16,
+      display: "flex",
+      flexDirection: "column",
+      gap: 12,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <StatusPip ok={ok} />
+        <span style={{
+          fontFamily: S.display,
+          color: "#e4e3fe",
+          fontWeight: 700,
+          fontSize: 12,
+          textTransform: "uppercase",
+          letterSpacing: "0.1em",
+        }}>
+          {name}
+        </span>
+        <span style={{
+          marginLeft: "auto",
+          fontFamily: S.body,
+          fontSize: 10,
+          fontWeight: 700,
+          color: ok ? "#4ade80" : "#f87171",
+          textTransform: "uppercase",
+          letterSpacing: "0.12em",
+        }}>
+          {ok ? "ONLINE" : "OFFLINE"}
         </span>
       </div>
-      <div className="flex flex-col gap-1">
+      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         {details.map((d) => (
-          <div key={d.label} className="flex justify-between text-xs">
-            <span className="text-zinc-500">{d.label}</span>
-            <span className="text-zinc-300 font-mono">{d.value}</span>
+          <div key={d.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{
+              fontFamily: S.body,
+              color: "#46465b",
+              fontSize: 10,
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+            }}>
+              {d.label}
+            </span>
+            <span style={{
+              fontFamily: S.display,
+              color: "#a9a9c2",
+              fontSize: 11,
+              fontWeight: 600,
+            }}>
+              {d.value}
+            </span>
           </div>
         ))}
       </div>
@@ -65,7 +117,6 @@ export default function StatusPage() {
       }
       setLastUpdated(new Date());
     }
-
     fetchHealth();
     const id = setInterval(fetchHealth, 2000);
     return () => clearInterval(id);
@@ -73,37 +124,104 @@ export default function StatusPage() {
 
   const clerkConfigured = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
   const clerkEnv = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.startsWith("pk_live")
-    ? "production"
-    : "development";
+    ? "PRODUCTION"
+    : "DEVELOPMENT";
 
   return (
-    <main className="min-h-screen bg-zinc-950 p-8">
-      <div className="max-w-xl mx-auto flex flex-col gap-6">
-        <div className="flex items-end justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-white">System Status</h1>
-            <p className="text-zinc-500 text-sm mt-1">Odświeżane co 2 sekundy</p>
+    <main style={{
+      minHeight: "100vh",
+      background: "#0b0c1f",
+      padding: "40px 24px",
+      position: "relative",
+    }}>
+      {/* Subtle background glow */}
+      <div style={{
+        position: "fixed",
+        inset: 0,
+        background: "radial-gradient(ellipse 50% 30% at 50% 100%, rgba(255,140,0,0.06) 0%, transparent 100%)",
+        pointerEvents: "none",
+        zIndex: 0,
+      }} />
+
+      <div style={{
+        position: "relative",
+        zIndex: 1,
+        maxWidth: 480,
+        margin: "0 auto",
+        display: "flex",
+        flexDirection: "column",
+        gap: 24,
+      }}>
+        {/* Header */}
+        <div>
+          <p style={{
+            fontFamily: S.display,
+            fontSize: 9,
+            color: "rgba(255,140,0,0.7)",
+            fontWeight: 700,
+            letterSpacing: "0.2em",
+            textTransform: "uppercase",
+            margin: "0 0 8px",
+          }}>
+            GAMEFORGE ENGINE
+          </p>
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
+            <h1 style={{
+              fontFamily: S.display,
+              fontSize: 26,
+              fontWeight: 900,
+              color: "#e4e3fe",
+              textTransform: "uppercase",
+              letterSpacing: "-0.01em",
+              margin: 0,
+              lineHeight: 1,
+            }}>
+              SYSTEM STATUS
+            </h1>
+            {lastUpdated && (
+              <span style={{
+                fontFamily: S.display,
+                color: "#46465b",
+                fontSize: 10,
+                fontWeight: 600,
+              }}>
+                {lastUpdated.toLocaleTimeString()}
+              </span>
+            )}
           </div>
-          {lastUpdated && (
-            <span className="text-zinc-600 text-xs font-mono">
-              {lastUpdated.toLocaleTimeString()}
-            </span>
-          )}
+          {/* Decorative line */}
+          <div style={{
+            marginTop: 10,
+            height: 2,
+            background: "linear-gradient(to right, #FF8C00, #00e3fd, transparent)",
+            width: "60%",
+          }} />
+          <p style={{
+            fontFamily: S.body,
+            color: "#46465b",
+            fontSize: 9,
+            textTransform: "uppercase",
+            letterSpacing: "0.15em",
+            margin: "8px 0 0",
+          }}>
+            AUTO-REFRESH EVERY 2 SECONDS
+          </p>
         </div>
 
-        <div className="flex flex-col gap-3">
+        {/* Service cards */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <ServiceCard
             name="Colyseus Game Server"
             ok={colyseus !== null}
             details={[
               { label: "Host", value: COLYSEUS_HTTP.replace(/^https?:\/\//, "") },
-              { label: "Aktywne pokoje", value: colyseus?.totalRooms ?? "—" },
-              { label: "Gracze online", value: colyseus?.totalPlayers ?? "—" },
-              { label: "  zalogowani", value: colyseus?.totalAuthenticated ?? "—" },
-              { label: "  goście", value: colyseus?.totalGuests ?? "—" },
+              { label: "Active Rooms", value: colyseus?.totalRooms ?? "—" },
+              { label: "Players Online", value: colyseus?.totalPlayers ?? "—" },
+              { label: "Authenticated", value: colyseus?.totalAuthenticated ?? "—" },
+              { label: "Guests", value: colyseus?.totalGuests ?? "—" },
               ...(colyseus?.rooms ?? []).map((r) => ({
                 label: `  ${r.roomId}`,
-                value: `${r.authenticated} zalog. + ${r.guests} gości`,
+                value: `${r.authenticated} auth + ${r.guests} guests`,
               })),
             ]}
           />
@@ -112,19 +230,41 @@ export default function StatusPage() {
             name="Clerk Auth"
             ok={clerkConfigured}
             details={[
-              { label: "Środowisko", value: clerkEnv },
-              { label: "Metoda logowania", value: "Email OTP" },
+              { label: "Environment", value: clerkEnv },
+              { label: "Method", value: "Email OTP + Social" },
             ]}
           />
 
           <ServiceCard
             name="Supabase"
             ok={false}
-            details={[{ label: "Status", value: "nie skonfigurowany (W19)" }]}
+            details={[{ label: "Status", value: "Not configured (W19)" }]}
           />
         </div>
 
-        <p className="text-zinc-700 text-xs text-right">Gameforge — Wieczór 18</p>
+        {/* Quest tracker decoration */}
+        <div>
+          <div style={{ height: 2, width: "100%", background: "rgba(34,35,62,0.8)", overflow: "hidden" }}>
+            <div style={{ height: "100%", background: "linear-gradient(to right, #FF8C00, #00e3fd, #f183ff)", width: "40%" }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, padding: "0 2px" }}>
+            <span style={{ color: "#FF8C00", fontSize: 10 }}>★</span>
+            <span style={{ color: "#FF8C00", fontSize: 10 }}>★</span>
+            <span style={{ color: "rgba(70,70,91,0.5)", fontSize: 10 }}>□</span>
+          </div>
+        </div>
+
+        <p style={{
+          fontFamily: S.display,
+          color: "#46465b",
+          fontSize: 9,
+          textAlign: "right",
+          textTransform: "uppercase",
+          letterSpacing: "0.12em",
+          margin: 0,
+        }}>
+          GAMEFORGE ENGINE v1.0.4
+        </p>
       </div>
     </main>
   );

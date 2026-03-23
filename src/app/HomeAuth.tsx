@@ -3,6 +3,11 @@
 import { useUser, useSession, useClerk, SignIn } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
 
+const S = {
+  display: "var(--font-display), 'Space Grotesk', sans-serif",
+  body: "var(--font-body), 'Plus Jakarta Sans', sans-serif",
+};
+
 function formatDuration(ms: number): string {
   const totalMinutes = Math.floor(ms / 60000);
   const hours = Math.floor(totalMinutes / 60);
@@ -17,6 +22,7 @@ function LoggedIn() {
   const { session } = useSession();
   const { signOut } = useClerk();
   const [duration, setDuration] = useState("");
+  const [hover, setHover] = useState(false);
 
   useEffect(() => {
     if (!session?.createdAt) return;
@@ -29,42 +35,117 @@ function LoggedIn() {
   const name = user?.firstName
     ? `${user.firstName}${user.lastName ? " " + user.lastName : ""}`
     : user?.emailAddresses[0]?.emailAddress ?? "Gracz";
-
   const email = user?.emailAddresses[0]?.emailAddress;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5 flex flex-col gap-3">
-        <div className="flex items-center gap-3">
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Label */}
+      <p style={{
+        fontFamily: S.display,
+        fontSize: 9,
+        fontWeight: 700,
+        letterSpacing: "0.15em",
+        textTransform: "uppercase",
+        color: "rgba(255, 140, 0, 0.8)",
+        margin: 0,
+      }}>
+        Welcome back
+      </p>
+
+      {/* Player card */}
+      <div style={{
+        background: "rgba(0,0,0,0.4)",
+        borderTop: "1px solid rgba(255,140,0,0.3)",
+        borderLeft: "1px solid rgba(255,140,0,0.1)",
+        borderRight: "1px solid rgba(255,140,0,0.1)",
+        borderBottom: "1px solid rgba(255,140,0,0.1)",
+        padding: 12,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {user?.imageUrl && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={user.imageUrl} alt="avatar" className="w-10 h-10 rounded-full" />
+            <img
+              src={user.imageUrl}
+              alt="avatar"
+              style={{ width: 36, height: 36, border: "1px solid rgba(255,140,0,0.4)", display: "block" }}
+            />
           )}
           <div>
-            <p className="text-white font-semibold text-sm">Grasz jako: {name}</p>
-            {email && <p className="text-zinc-500 text-xs">{email}</p>}
+            <p style={{ fontFamily: S.display, color: "#e4e3fe", fontWeight: 700, fontSize: 14, margin: 0, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              {name}
+            </p>
+            {email && (
+              <p style={{ fontFamily: S.body, color: "#a9a9c2", fontSize: 11, margin: "2px 0 0" }}>
+                {email}
+              </p>
+            )}
           </div>
         </div>
-
         {duration && (
-          <p className="text-zinc-500 text-xs">
-            Zalogowany od: <span className="text-zinc-300">{duration}</span>
+          <p style={{ fontFamily: S.body, color: "#a9a9c2", fontSize: 11, margin: 0 }}>
+            Session active:{" "}
+            <span style={{ color: "#FF8C00" }}>{duration}</span>
           </p>
         )}
       </div>
 
+      {/* CTA */}
       <a
         href="/game"
-        className="w-full rounded-xl bg-white text-zinc-950 font-semibold py-3 text-center hover:bg-zinc-200 transition-colors"
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        style={{
+          display: "block",
+          textAlign: "center",
+          padding: "14px 24px",
+          background: "linear-gradient(to right, #FF8C00, #CC7000)",
+          color: "#2a1600",
+          fontFamily: S.display,
+          fontWeight: 900,
+          fontSize: 12,
+          letterSpacing: "0.1em",
+          textTransform: "uppercase",
+          border: "none",
+          textDecoration: "none",
+          cursor: "pointer",
+          filter: hover ? "brightness(1.1)" : "brightness(1)",
+          transition: "filter 0.1s",
+        }}
       >
-        Wejdź do gry
+        ⚔ ENTER THE GAME
       </a>
+
+      {/* Quest tracker decoration */}
+      <div style={{ paddingTop: 4 }}>
+        <div style={{ height: 2, width: "100%", background: "rgba(34,35,62,0.5)", overflow: "hidden" }}>
+          <div style={{ height: "100%", background: "linear-gradient(to right, #FF8C00, #00e3fd, #f183ff)", width: "66%" }} />
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, padding: "0 2px" }}>
+          <span style={{ color: "#FF8C00", fontSize: 10 }}>★</span>
+          <span style={{ color: "#FF8C00", fontSize: 10 }}>★</span>
+          <span style={{ color: "rgba(70,70,91,0.5)", fontSize: 10 }}>□</span>
+        </div>
+      </div>
 
       <button
         onClick={() => signOut()}
-        className="text-zinc-600 text-xs hover:text-zinc-400 transition-colors"
+        style={{
+          background: "none",
+          border: "none",
+          color: "rgba(169,169,194,0.5)",
+          fontFamily: S.body,
+          fontSize: 9,
+          cursor: "pointer",
+          textAlign: "center",
+          padding: 0,
+          textTransform: "uppercase",
+          letterSpacing: "0.1em",
+        }}
       >
-        Wyloguj się
+        Sign Out
       </button>
     </div>
   );
@@ -72,9 +153,58 @@ function LoggedIn() {
 
 function LoggedOut() {
   return (
-    <div className="flex flex-col items-center gap-4">
-      <p className="text-zinc-400 text-sm">Zaloguj się żeby grać</p>
-      <SignIn routing="hash" />
+    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+      <SignIn
+        routing="hash"
+        appearance={{
+          layout: {
+            socialButtonsVariant: "blockButton",
+            socialButtonsPlacement: "top",
+          },
+          elements: {
+            rootBox: { width: "100%" },
+            card: {
+              width: "100%",
+              maxWidth: "100%",
+              background: "transparent",
+              boxShadow: "none",
+              padding: 0,
+              margin: 0,
+            },
+            cardBox: { width: "100%", boxShadow: "none" },
+          },
+        }}
+      />
+
+      {/* PLAY AS GUEST */}
+      <div style={{ textAlign: "center", paddingTop: 8 }}>
+        <a
+          href="/game"
+          style={{
+            fontFamily: S.body,
+            fontSize: 10,
+            color: "rgba(0, 227, 253, 0.7)",
+            textDecoration: "none",
+            textTransform: "uppercase",
+            letterSpacing: "0.15em",
+            fontWeight: 700,
+          }}
+        >
+          PLAY AS GUEST
+        </a>
+      </div>
+
+      {/* Quest tracker decoration */}
+      <div style={{ paddingTop: 12 }}>
+        <div style={{ height: 2, width: "100%", background: "rgba(34,35,62,0.5)", overflow: "hidden" }}>
+          <div style={{ height: "100%", background: "linear-gradient(to right, #FF8C00, #00e3fd, #f183ff)", width: "33%" }} />
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, padding: "0 2px" }}>
+          <span style={{ color: "#FF8C00", fontSize: 10 }}>★</span>
+          <span style={{ color: "rgba(70,70,91,0.5)", fontSize: 10 }}>□</span>
+          <span style={{ color: "rgba(70,70,91,0.5)", fontSize: 10 }}>□</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -82,7 +212,13 @@ function LoggedOut() {
 export default function HomeAuth() {
   const { isLoaded, isSignedIn } = useUser();
 
-  if (!isLoaded) return <div className="h-12 rounded-xl bg-zinc-900 animate-pulse" />;
+  if (!isLoaded) return (
+    <div style={{
+      height: 160,
+      background: "rgba(0,0,0,0.3)",
+      animation: "pulse 1.5s ease-in-out infinite",
+    }} />
+  );
   if (isSignedIn) return <LoggedIn />;
   return <LoggedOut />;
 }

@@ -1,33 +1,153 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
 /* Game page — no scrollbars, canvas fills full window */
 body:has(#game-container) {
   margin: 0;
   padding: 0;
   overflow: hidden;
+}
+
+/* Ember particles animation */
+@keyframes ember-rise {
+  0% {
+    transform: translateY(0) translateX(0) scale(1.2);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-40vh) translateX(-20px) scale(0.8);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(-90vh) translateX(10px) scale(0);
+    opacity: 0;
+  }
+}
+
+.ember {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 0;
+  pointer-events: none;
+  animation: ember-rise linear infinite forwards;
+}
+
+/* Clerk SignIn overrides — Stitch "Neon Quest" theme */
+.cl-card {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  padding: 0 !important;
+}
+.cl-rootBox,
+.cl-signIn-root {
+  width: 100% !important;
+}
+.cl-headerTitle {
+  display: none !important;
+}
+.cl-headerSubtitle {
+  display: none !important;
+}
+.cl-header {
+  display: none !important;
+}
+.cl-formButtonPrimary {
+  background: linear-gradient(to right, #FF8C00, #CC7000) !important;
+  color: #2a1600 !important;
+  font-weight: 900 !important;
+  border-radius: 0 !important;
+  border: none !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.1em !important;
+  box-shadow: none !important;
+  font-size: 12px !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+  padding: 16px !important;
+}
+.cl-formButtonPrimary:hover {
+  filter: brightness(1.1) !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+.cl-formFieldInput {
+  background: rgba(0, 0, 0, 0.7) !important;
+  border: 1px solid rgba(70, 70, 91, 0.3) !important;
+  border-radius: 0 !important;
+  color: #e4e3fe !important;
+  font-size: 12px !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  padding: 12px !important;
+}
+.cl-formFieldInput:focus {
+  border-color: #FF8C00 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+.cl-formFieldLabel {
+  color: #a9a9c2 !important;
+  font-size: 9px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.15em !important;
+  font-weight: 700 !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+}
+.cl-footerActionLink {
+  color: #f183ff !important;
+  font-size: 11px !important;
+}
+.cl-footerActionText,
+.cl-identityPreviewText,
+.cl-formResendCodeLink {
+  color: #a9a9c2 !important;
+}
+.cl-dividerLine {
+  background: rgba(70, 70, 91, 0.4) !important;
+}
+.cl-dividerText {
+  color: rgba(255, 140, 0, 0.8) !important;
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.15em !important;
+}
+/* Social block button (Google full-width) */
+.cl-socialButtonsBlockButton {
+  background: white !important;
+  color: black !important;
+  border-radius: 0 !important;
+  border: none !important;
+  padding: 10px 16px !important;
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  transition: opacity 0.15s !important;
+}
+.cl-socialButtonsBlockButton:hover {
+  background: rgba(255, 255, 255, 0.9) !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+.cl-socialButtonsBlockButtonText {
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.1em !important;
+  color: black !important;
+}
+/* Icon-only social button fallback */
+.cl-socialButtonsIconButton {
+  border-radius: 0 !important;
+  border: 2px solid #46465b !important;
+  background: #16172e !important;
+}
+.cl-internal-b3fm6y {
+  display: none !important;
 }

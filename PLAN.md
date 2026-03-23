@@ -801,37 +801,80 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 24: Enemy drop system
+### [ ] Wieczór 24: Enemy drop system + equippable items
 
 ```
-Implement enemies and item drops.
+Implement enemy item drops including equippable gear that modifies player stats.
+
+SERVER — create server/src/lootConfig.ts:
+
+export interface LootItem {
+  id: string
+  name: string
+  slot: 'weapon' | 'armor' | 'helmet' | 'item'  // equipment slot
+  attackBonus: number   // added to player.attack when equipped
+  defenseBonus: number  // added to player.defense when equipped
+  rarity: 'common' | 'uncommon' | 'rare'
+}
+
+export const LOOT_TABLE: Record<string, LootItem> = {
+  // Weapons
+  bone_sword:    { id: 'bone_sword',    name: 'Bone Sword',    slot: 'weapon',  attackBonus: 8,  defenseBonus: 0,  rarity: 'common' },
+  iron_sword:    { id: 'iron_sword',    name: 'Iron Sword',    slot: 'weapon',  attackBonus: 15, defenseBonus: 0,  rarity: 'uncommon' },
+  shadow_blade:  { id: 'shadow_blade',  name: 'Shadow Blade',  slot: 'weapon',  attackBonus: 25, defenseBonus: 0,  rarity: 'rare' },
+  // Armor
+  leather_armor: { id: 'leather_armor', name: 'Leather Armor', slot: 'armor',   attackBonus: 0,  defenseBonus: 5,  rarity: 'common' },
+  chain_mail:    { id: 'chain_mail',    name: 'Chain Mail',    slot: 'armor',   attackBonus: 0,  defenseBonus: 10, rarity: 'uncommon' },
+  // Helmet
+  bone_helmet:   { id: 'bone_helmet',   name: 'Bone Helmet',   slot: 'helmet',  attackBonus: 0,  defenseBonus: 3,  rarity: 'common' },
+  iron_helmet:   { id: 'iron_helmet',   name: 'Iron Helmet',   slot: 'helmet',  attackBonus: 0,  defenseBonus: 7,  rarity: 'uncommon' },
+}
+
+// Drop chances per rarity: common 60%, uncommon 30%, rare 10%
+export const ENEMY_DROP_POOL = {
+  hunter: ['bone_sword', 'leather_armor', 'bone_helmet', 'iron_sword', 'chain_mail', 'shadow_blade', 'iron_helmet', 'raw_meat'],
+  // weights: common×3, uncommon×2, rare×1, raw_meat×4 (most frequent non-gear drop)
+}
 
 SERVER (server/src/GameRoom.ts):
-1. In onCreate(), spawn 5 Orc enemies in this.state.enemies:
-   EnemyState: type "orc", hp 30, maxHp 30, isAlive true, animKey "idle"
-   Place them at hardcoded positions away from the player spawn.
+1. 'attack_enemy' handler — on enemy death:
+   - Roll a random drop from ENEMY_DROP_POOL[enemy.type] using weighted rarity.
+   - 30% chance of no drop (enemy drops nothing).
+   - Push the drop item id into player.inventory.
+   - Broadcast 'enemy_loot' { itemId, itemName, rarity, x: enemy.x, y: enemy.y } to all clients.
 
-2. Add a 'attack_enemy' message handler:
-   - Receives { enemyId: string, damage: number }
-   - Validate player is within 60px of enemy.
-   - Validate damage <= 10 (cap to prevent cheating).
-   - Reduce enemy.hp by damage.
-   - If enemy.hp <= 0:
-       Set enemy.isAlive = false.
-       Drop raw_meat x1 into the attacking player's inventory.
-       Schedule respawn: after 120_000ms set enemy.hp = enemy.maxHp, enemy.isAlive = true.
-       Send a 'enemy_death' event broadcast: this.broadcast('enemy_death', { enemyId, x: enemy.x, y: enemy.y })
+2. Add 'equip_item' message handler:
+   - Receives { itemId: string }
+   - Look up itemId in LOOT_TABLE — must be an equippable slot item.
+   - Validate item is in player.inventory.
+   - If player already has something in that slot: swap (move current equipped item back to inventory).
+   - Set player.equipment.set(slot, itemId), remove itemId from inventory.
+   - Recalculate and update player.attack and player.defense:
+       player.attack = BASE_ATTACK + (weapon bonus or 0)
+       player.defense = BASE_DEFENSE + (armor bonus or 0) + (helmet bonus or 0)
+   - Send 'stats_update' immediately after equip.
 
-CLIENT:
-1. On room.state.enemies.onAdd: spawn Orc sprite using the enemy sprite sheet from:
-   public/assets/Pixel Crawler - Free Pack 2.0.4/.../Enemies/Orc/ (check ASSETS_MAP.md for exact path)
-   Create idle and walk animations for the Orc.
-2. On onChange: hide if isAlive = false, show if true.
-3. When player presses SPACE near an Orc (within 60px):
-   Send room.send('attack_enemy', { enemyId, damage: 10 }).
-   Play 'attack_slice' animation on toolSprite.
-4. On 'enemy_death' broadcast: spawn a death particle effect (use Phaser particles
-   with a simple circle texture, red color, burst of 10 particles).
+3. Add 'unequip_item' message handler:
+   - Receives { slot: string }
+   - Move item from equipment back to inventory.
+   - Recalculate attack/defense.
+
+Constants:
+  const BASE_ATTACK = 5
+  const BASE_DEFENSE = 2
+
+CLIENT (src/app/game/scenes/PlayScene.ts):
+1. On 'enemy_loot' broadcast:
+   - Show floating loot text above the death position: "+Iron Sword" in color by rarity
+     (common=white, uncommon=green, rare=gold).
+   - Play a sparkle particle effect at the drop position.
+
+CLIENT — PlayerPanel.tsx (React sidebar):
+1. Equipment slots (weapon/armor/helmet/item) now show the actual equipped item name
+   and its bonuses (e.g. "Iron Sword +15 ATK").
+2. Clicking an equipped slot sends room.send('unequip_item', { slot }) via window event
+   dispatched from Phaser or directly via getRoom().
+3. Atak/Obrona values in the sidebar update automatically via stats_update (already wired).
 
 Confirm when done and show me what was created.
 ```
@@ -874,7 +917,7 @@ Confirm when done and show me what was created.
 
 ---
 
-## TYDZIEŃ 6 — Building and crafting
+## TYDZIEŃ 6 — Building and cooking
 
 ### [ ] Wieczór 26: BuildingConfig + build mode
 
@@ -901,9 +944,6 @@ export const BUILDING_CONFIG: Record<string, BuildingConfig> = {
   bonfire: { id: 'bonfire', name: 'Bonfire', width: 1, height: 1,
     cost: { wood: 5 }, hp: 30, maxHp: 30,
     sprite: 'Pixel Crawler - Free Pack 2.0.4/.../Structures/Bonfire.png' },
-  workbench: { id: 'workbench', name: 'Workbench', width: 2, height: 1,
-    cost: { wood: 8 }, hp: 60, maxHp: 60,
-    sprite: 'Pixel Crawler - Free Pack 2.0.4/.../Structures/Workbench.png' },
   cooking_pot: { id: 'cooking_pot', name: 'Cooking Pot', width: 1, height: 1,
     cost: { stone: 5 }, hp: 40, maxHp: 40,
     sprite: 'Pixel Crawler - Free Pack 2.0.4/.../Structures/Pot.png' },
@@ -987,96 +1027,9 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 29: Crafting UI at Workbench and Anvil
+### [ ] Wieczór 29: ~~Crafting~~ — USUNIĘTY (na razie)
 
-```
-Implement crafting recipes and the crafting UI at the Workbench.
-
-Create src/shared/craftingConfig.ts:
-
-export interface CraftingRecipe {
-  id: string
-  name: string
-  station: 'workbench' | 'anvil'
-  inputs: Record<string, number>   // { wood: 3, stone: 1 }
-  output: string                   // item id
-  outputQty: number
-  craftTimeMs: number
-}
-
-export const CRAFTING_RECIPES: CraftingRecipe[] = [
-  { id: 'axe', name: 'Axe', station: 'workbench',
-    inputs: { wood: 3, stone: 2 }, output: 'axe', outputQty: 1, craftTimeMs: 5_000 },
-  { id: 'pickaxe', name: 'Pickaxe', station: 'workbench',
-    inputs: { wood: 2, stone: 3 }, output: 'pickaxe', outputQty: 1, craftTimeMs: 5_000 },
-  { id: 'cooking_pot', name: 'Cooking Pot', station: 'workbench',
-    inputs: { stone: 5 }, output: 'cooking_pot_item', outputQty: 1, craftTimeMs: 8_000 },
-]
-
-SERVER (server/src/GameRoom.ts):
-1. Add 'craft' message handler:
-   - Receives { recipeId, buildingId }
-   - Validate: player near building, building type matches recipe.station.
-   - Validate: player.inventory has all inputs.
-   - Deduct inputs from inventory.
-   - After craftTimeMs: push output × outputQty to player.inventory.
-   - Use this.clock.setTimeout().
-
-CLIENT:
-1. When player presses E near a Workbench:
-   - Open a crafting UI showing all workbench recipes.
-   - Each recipe row: icon, name, required materials (green if available, red if not),
-     craft button (disabled if materials missing).
-   - On click: send room.send('craft', { recipeId, buildingId }).
-   - Show a progress bar that fills over craftTimeMs.
-
-Confirm when done and show me what was created.
-```
-
----
-
-### [ ] Wieczór 29b: Cooking Pot — full recipe system
-
-```
-Implement the Cooking Pot with a 2-ingredient slot system and timer.
-
-The CookingPotState schema already exists in server/src/GameRoom.ts with fields:
-slot1, slot2, currentRecipe, cookingUntil, isReady, result.
-
-Create src/shared/cookingRecipes.ts:
-
-export interface CookingRecipe {
-  id: string
-  ingredients: [string, string]  // exactly 2 item ids (order does not matter)
-  result: string
-  cookTimeMs: number
-  hungerBonus: number            // extra hunger on top of base food value
-  hpBonus: number
-}
-
-export const COOKING_RECIPES: CookingRecipe[] = [
-  { id: 'meat_mushroom_stew', ingredients: ['cooked_meat', 'mushroom'],
-    result: 'stew', cookTimeMs: 20_000, hungerBonus: 20, hpBonus: 15 },
-  { id: 'berry_mushroom_tea', ingredients: ['berries', 'mushroom'],
-    result: 'herbal_tea', cookTimeMs: 15_000, hungerBonus: 10, hpBonus: 20 },
-]
-
-SERVER (server/src/GameRoom.ts):
-1. Add 'pot_add_ingredient' handler: places item into slot1 or slot2 of the CookingPotState.
-2. Add 'pot_start_cooking' handler:
-   - Match slot1 + slot2 against COOKING_RECIPES (order-insensitive).
-   - If match found: set currentRecipe, cookingUntil = Date.now() + cookTimeMs.
-   - In the tick loop (or clock.setTimeout): when cookingUntil is reached,
-     set isReady = true, result = recipe.result.
-3. Add 'pot_collect' handler: move result to player.inventory, reset pot state.
-
-CLIENT:
-1. E near Cooking Pot opens a UI showing both ingredient slots and a cook button.
-2. Show countdown timer while cooking.
-3. When isReady: show "Ready!" and a collect button.
-
-Confirm when done and show me what was created.
-```
+*Krafting (Workbench, Anvil, receptury craftingu) usunięty z planu na ten etap.*
 
 ---
 
@@ -1579,7 +1532,7 @@ const response = await client.messages.create({
   max_tokens: 500,
   system: `You are a game designer assistant for a 2D survival multiplayer game called Gameforge.
 The game has: players, enemies (orc, skeleton), food items (mushroom, berries, raw_meat, cooked_meat),
-buildings (bonfire, workbench, cooking_pot, wall_wood), and a day/night cycle.
+buildings (bonfire, cooking_pot, wall_wood), and a day/night cycle.
 Your job: ask exactly 3 SHORT clarifying questions to better understand what kind of game
 modification the user wants. Questions should help determine: monster appearance, food/cooking
 rules, or special effects. Reply in ${language === 'pl' ? 'Polish' : 'English'}.

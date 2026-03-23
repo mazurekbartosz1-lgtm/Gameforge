@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-23 (Session 8, end of Wieczór 19)
+2026-03-23 (Session 9, UI redesign — Stitch concept implemented)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -27,6 +27,7 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ Wieczór 17: System wrogów — Hunter enemy, AI chase/attack, zone-based spawning, map collision, debug overlays
 - ✅ Wieczór 18: Clerk auth — JWT token z frontendu do Colyseus, weryfikacja na serwerze, guest fallback
 - ✅ Wieczór 19: Player HUD sidebar, strona /status, HomeAuth, statystyki bojowe (atak/obrona), nowa mechanika sanity
+- ✅ UI redesign (Session 9): HUD przebudowany wg Stitch concept — OPERATOR header, TACTICAL_MAP, minimap na HTML canvas, QUEST_OBJ, fix Clerk overflow
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
@@ -102,6 +103,37 @@ Gameforge/
 - Harvest resource (tree/rock): +2 sanity
 - Build (future): +5 sanity
 - Sanity ≤ 0 → effectiveAttack = floor(baseAttack / 2), shown in red in UI
+
+## UI Redesign — Session 9 (2026-03-23)
+
+### Stitch design brief
+- `STITCH_BRIEF.md` — pełny design brief dla 8 ekranów (Home, Status, Game, Objects, Inventory, Loot, Build, Leaderboard)
+- Projekt w Stitch: "Gameforge — Neon Quest UI" (ID: `11496012017862414056`) — wygenerowany design system (Space Grotesk + Plus Jakarta Sans, paleta kolorów, asymetryczne pixel-bordery)
+
+### PlayerPanel.tsx — pełny redesign wg Stitch concept
+- Szerokość 216px (było 240px)
+- **OPERATOR** eyebrow label nad nazwą gracza
+- **DAY N ☀ / NIGHT N 🌙** — licznik dni po stronie klienta (inkrementowany przy przejściu `isNight: true → false`)
+- Sekcja **TACTICAL_MAP** z `<canvas id="minimap-canvas" width=160 height=120>` i wyświetlaniem X/Y pozycji
+- Etykiety sekcji: `#a9a9c2` (jaśniejsze niż poprzednie `#46465b`)
+- Kafelki COMBAT: pixel-border `2px solid accent` top+right; OBRONA: poprawny `#00e3fd`
+- Sloty ekwipunku: kolorowe symbole tekstowe (✕ orange, ◆ cyan, ◉ magenta, + muted) zamiast emoji
+- Sekcja: **QUEST_OBJ** + ★★☆
+- Nasłuchuje eventów: `gameStats` (istniejący) + `gamePosition` (nowy, X/Y od PlayScene)
+
+### PlayScene.ts — minimap migracja na HTML canvas
+- `minimapGfx: Phaser.GameObjects.Graphics` **usunięty** całkowicie
+- Nowe pola: `minimapCanvas: HTMLCanvasElement | null` i `minimapCtx: CanvasRenderingContext2D | null` — lazy-cache (DOM lookup tylko raz)
+- `drawMinimap()` przepisany:
+  - Używa `ImageData` + `putImageData` (1 draw call dla terenu zamiast ~19 200 `fillRect`) — znacznie wydajniejszy
+  - Mgła: dim-factor `0.35` dla odkrytych ale zafoggowanych kafelków (jeden pass zamiast dwóch)
+  - Emituje event `gamePosition: { x: tileX, y: tileY }` co klatkę
+  - Pomarańczowy border minimapy (`rgba(255,140,0,0.5)`)
+
+### HomeAuth.tsx + page.tsx — fix Clerk SignIn overflow
+- Clerk `<SignIn>` wychodził poza 320px kontener panelu
+- Fix: `appearance.elements` → `rootBox: {width:"100%"}`, `card: {width:"100%", maxWidth:"100%", background:"transparent", boxShadow:"none", padding:0}`, `cardBox: {width:"100%", boxShadow:"none"}`
+- `page.tsx` panel: dodano `overflow: hidden` jako dodatkowe zabezpieczenie
 
 ## Wieczór 19 additions
 
@@ -189,12 +221,9 @@ Gameforge/
 - `cameras.main.startFollow(followTarget, true, 0.08, 0.08)` — płynne śledzenie (lerp)
 - `cameras.main.setDeadzone(200, 140)` — gracz porusza się swobodnie w centrum bez ruszania kamerą
 
-### Minimap
-- `minimapGfx: Graphics`, scrollFactor 0, depth 25, prawy górny róg `(632, 8)`, rozmiar `160×120` px
-- `MINIMAP_SCALE = 4` — 1 px minimapy = 4 tile świata
-- Pass 1: terrain (trawa `#2a4a2a`, las `#1a6a1a`) dla odkrytych kafelków
-- Pass 2: czarna nakładka 65% dla odkrytych ale zafoggowanych kafelków
-- Drzewa (zielone), kamienie (szare), inni gracze (niebieskie), gracz (biały 3×3)
+### Minimap (PRZENIESIONA w Session 9 — patrz wyżej)
+- Pierwotnie: `minimapGfx: Graphics` w Phaser canvas, prawy górny róg `(632, 8)`, `160×120px`
+- Po redesignie: renderowana na `<canvas id="minimap-canvas">` w React sidebarze
 
 ### Fog of war fix
 - `VISION_RADIUS` zmniejszony z 60 → 16 tile (256px promień)
