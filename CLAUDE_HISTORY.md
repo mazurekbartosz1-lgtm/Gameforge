@@ -613,6 +613,38 @@ Remember to add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to `server/.env` 
 
 ---
 
+## Session 20 — 2026-03-23 (Session 8)
+
+### What was done
+- **Wieczór 19 COMPLETE ✅** — Player HUD sidebar, status page, HomeAuth, combat stats, sanity overhaul
+- `src/app/HomeAuth.tsx` — nowy komponent: `LoggedIn` (avatar, imię, e-mail, czas sesji od zalogowania) + `LoggedOut` (formularz SignIn)
+- `src/app/page.tsx` — uproszczony do samego `<HomeAuth />`
+- `src/app/status/page.tsx` — strona `/status` jako client component polling `/health` co 2s; pokazuje status serwisów, liczbę pokoi, graczy, zalogowanych vs. gości
+- `server/src/index.ts` — endpoint GET `/health` zwracający dane o pokojach/graczach z metadanych Colyseus; `import "dotenv/config"` dodane
+- `server/src/GameRoom.ts` — `setMetadata()` z agregowanymi statystykami (`_updateMetadata`)
+- Layout `/game` zmieniony z kolumny na rząd: canvas (flex:1) + prawy sidebar 240px
+- `src/app/game/PlayerPanel.tsx` — przepisany jako pionowy sidebar: nickname/Gość, przycisk Zaloguj się dla gości, paski HP/Głód/Zdrowie psych., kafelki Atak/Obrona
+- `PlayerState` — dodano `attack: int16 = 5`, `defense: int16 = 2`
+- Sanity: nowa mechanika — pasywny regen +0.3/tick, zabicie wroga -20, harvest +2
+- `sendStatsToPlayers` — oblicza `effectiveAttack` (połowa przy sanity=0), wysyła do klienta
+- `PlayScene.ts` — zaktualizowany typ `stats_update` (dodano sanity, attack, defense)
+- `PlayerPanel.tsx` — atak czerwony + "↓ obniżony" przy sanity≤0
+
+### Decisions made
+- `effectiveAttack` obliczany po stronie serwera (nie klienta) — single source of truth dla damage
+- Sanity nie drenauje w nocy — nowa mechanika oparta na zachowaniu gracza (walka vs. zbieranie)
+- Sidebar 240px szerokości — stała szerokość, nie flex, żeby minimap Phasera miał stabilny obszar
+- Pasywny regen sanity +0.3/tick ≈ 5.5 min od 0 do 100 przy braku zabijania
+
+### Problems encountered
+- Brak — wszystkie zmiany wprowadzone płynnie
+
+### Next step
+**Wieczór 20** — Zapis/odczyt stanu gracza z Supabase (load on join, save on leave).
+Pamiętaj: dodać `SUPABASE_URL` i `SUPABASE_SERVICE_ROLE_KEY` do `server/.env` i Railway przed testem.
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

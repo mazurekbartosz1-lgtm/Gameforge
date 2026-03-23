@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-23 (Session 7, end of Wieczór 18)
+2026-03-23 (Session 8, end of Wieczór 19)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -26,6 +26,7 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ Wieczór 16: Camera deadzone + lerp, minimap z mgłą wojny, VISION_RADIUS 60→16
 - ✅ Wieczór 17: System wrogów — Hunter enemy, AI chase/attack, zone-based spawning, map collision, debug overlays
 - ✅ Wieczór 18: Clerk auth — JWT token z frontendu do Colyseus, weryfikacja na serwerze, guest fallback
+- ✅ Wieczór 19: Player HUD sidebar, strona /status, HomeAuth, statystyki bojowe (atak/obrona), nowa mechanika sanity
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
@@ -82,7 +83,7 @@ Gameforge/
 | WebSocket URL | `wss://gameforge-production-d7c8.up.railway.app` |
 
 ## Game server schemas (GameRoom.ts)
-- `PlayerState` — sessionId, userId, nickname, x/y, hp, hunger, sanity, inventory, equipment, activeSlot, direction, animKey, isOnline
+- `PlayerState` — sessionId, userId, nickname, x/y, hp, maxHp, hunger, sanity, attack (base 5), defense (base 2), inventory, equipment, activeSlot, direction, animKey, isOnline
 - `ResourceNode` — id, type, x/y, hp, respawnAt, isAlive
 - `FoodNode` — id, type, x/y, isAlive, respawnAt
 - `EnemyState` — id, type, x/y, hp, isAlive, animKey
@@ -92,13 +93,38 @@ Gameforge/
 
 ## Tick loop (1 s interval)
 1. Update `worldTime` and `isNight` (10-min real-time day cycle)
-2. Drain hunger (0.5/s) and sanity at night (1.0/s) / regen sanity during day (0.5/s)
+2. Drain hunger (0.5/s); passive sanity regen (+0.3/s)
 3. Respawn dead ResourceNodes and FoodNodes when `respawnAt` passes
 
-## Message handlers (client → server)
+## Sanity mechanics
+- Passive regen: +0.3/tick (slow, ~5 min to fill from 0)
+- Kill enemy: −20 sanity
+- Harvest resource (tree/rock): +2 sanity
+- Build (future): +5 sanity
+- Sanity ≤ 0 → effectiveAttack = floor(baseAttack / 2), shown in red in UI
+
+## Wieczór 19 additions
+
+### Player HUD sidebar
+- Layout zmieniony na `flex row`: canvas (flex:1) + prawy sidebar (240px)
+- `src/app/game/PlayerPanel.tsx` — pionowy panel z: nickname/Gość, przycisk "Zaloguj się" dla gości (useClerk), paski HP/Głód/Zdrowie psych., kafelki Atak/Obrona
+- Atak czerwony + napis "↓ obniżony" gdy sanity ≤ 0
+
+### Status page
+- `src/app/status/page.tsx` — client component, polling `/health` co 2s
+- Pokazuje: status Colyseus/Clerk/Supabase, liczbę pokoi, graczy online, zalogowanych vs. gości
+
+### Home page auth
+- `src/app/HomeAuth.tsx` — `LoggedIn` (avatar, imię, e-mail, czas sesji) + `LoggedOut` (SignIn modal)
+- `src/app/page.tsx` — uproszczone do samego `<HomeAuth />`
+
+### Message handlers (client → server)
 - `move` — x, y, direction, animKey
 - `equip` — slot, itemId
 - `activeSlot` — slot index
+- `harvest` — id (drzewo/kamień → nagroda + sanity +2)
+- `attack_enemy` — enemyId (zabicie → sanity −20)
+- `request_players`, `request_resources`, `request_dead_trees`, `enter_chunk`
 
 ## Wieczór 18 additions
 

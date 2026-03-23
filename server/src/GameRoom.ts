@@ -18,6 +18,8 @@ export class PlayerState extends Schema {
   @type("int16") maxHp: number = 100;
   @type("float32") hunger: number = 100;
   @type("float32") sanity: number = 100;
+  @type("int16") attack: number = 5;
+  @type("int16") defense: number = 2;
   @type(["string"]) inventory: ArraySchema<string> = new ArraySchema<string>();
   @type({ map: "string" }) equipment: MapSchema<string> = new MapSchema<string>();
   @type("uint8") activeSlot: number = 0;
@@ -95,9 +97,10 @@ export class WorldState extends Schema {
 
 const TICK_RATE = 1000;          // ms between ticks
 const DAY_DURATION = 600_000;    // 10 min real time = 1 in-game day
-const HUNGER_DRAIN_PER_SEC = 0.5 / (TICK_RATE / 1000);
-const SANITY_NIGHT_DRAIN = 1.0 / (TICK_RATE / 1000);
-const SANITY_DAY_REGEN = 0.5 / (TICK_RATE / 1000);
+const HUNGER_DRAIN_PER_SEC  = 0.5 / (TICK_RATE / 1000);
+const SANITY_PASSIVE_REGEN  = 0.3 / (TICK_RATE / 1000); // slow regen when not killing
+const SANITY_KILL_PENALTY   = 20;   // -20 sanity per enemy kill
+const SANITY_HARVEST_BONUS  = 2;    // +2 sanity per resource harvested
 
 const TILE_PX             = 16;   // pixels per tile (mirrors client TILE_SIZE)
 const ENEMY_ZONE_TILES    = 16;   // tiles per enemy spawn zone side (256 px)
@@ -230,6 +233,7 @@ export class GameRoom extends Room<GameRoomOptions> {
     }
 
     this.state.players.set(client.sessionId, player);
+    this._updateMetadata();
 
     // Send existing players to the new client
     const existing: object[] = [];
@@ -259,6 +263,18 @@ export class GameRoom extends Room<GameRoomOptions> {
     }
     this.broadcast("player_remove", { sessionId: client.sessionId });
     console.log(`[GameRoom] ${client.sessionId} left`);
+    this._updateMetadata();
+  }
+
+  _updateMetadata() {
+    let authenticated = 0;
+    let guests = 0;
+    this.state.players.forEach((p) => {
+      if (p.isOnline) {
+        p.userId === p.sessionId ? guests++ : authenticated++;
+      }
+    });
+    this.setMetadata({ authenticated, guests });
   }
 
   onDispose() {
@@ -279,6 +295,7 @@ export class GameRoom extends Room<GameRoomOptions> {
       const now = Date.now();
       this.updateWorldTime(now);
       this.drainHungerAndSanity();
+      this.sendStatsToPlayers();
       this.respawnNodes(now);
       this.tickEnemyAI();
     }
@@ -296,17 +313,33 @@ export class GameRoom extends Room<GameRoomOptions> {
       // Hunger
       player.hunger = Math.max(0, player.hunger - HUNGER_DRAIN_PER_SEC);
 
-      // Sanity
-      if (this.state.isNight) {
-        player.sanity = Math.max(0, player.sanity - SANITY_NIGHT_DRAIN);
-      } else {
-        player.sanity = Math.min(100, player.sanity + SANITY_DAY_REGEN);
-      }
+      // Sanity — passive regen (grows by not killing)
+      player.sanity = Math.min(100, player.sanity + SANITY_PASSIVE_REGEN);
 
       // Hunger hurts HP
       if (player.hunger <= 0) {
         player.hp = Math.max(0, player.hp - 1);
       }
+    });
+  }
+
+  private sendStatsToPlayers() {
+    this.clients.forEach((client) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player || !player.isOnline) return;
+      const effectiveAttack = player.sanity <= 0
+        ? Math.max(1, Math.floor(player.attack / 2))
+        : player.attack;
+      client.send("stats_update", {
+        hp: player.hp,
+        maxHp: player.maxHp,
+        hunger: player.hunger,
+        sanity: player.sanity,
+        attack: effectiveAttack,
+        defense: player.defense,
+        nickname: player.nickname,
+        isNight: this.state.isNight,
+      });
     });
   }
 
@@ -686,6 +719,7 @@ export class GameRoom extends Room<GameRoomOptions> {
         const qty = 2 + Math.floor(Math.random() * 3); // 2–4 wood
         if (player) {
           for (let i = 0; i < qty; i++) player.inventory.push("wood");
+          player.sanity = Math.min(100, player.sanity + SANITY_HARVEST_BONUS);
         }
         client.send("harvest_reward", { drops: [{ item: "wood", qty }] });
         console.log(`[GameRoom] ${player?.nickname ?? client.sessionId} harvested ${data.id} → ${qty} wood`);
@@ -704,6 +738,7 @@ export class GameRoom extends Room<GameRoomOptions> {
         const qty = 1 + Math.floor(Math.random() * 2);
         if (player) {
           for (let i = 0; i < qty; i++) player.inventory.push("stone");
+          player.sanity = Math.min(100, player.sanity + SANITY_HARVEST_BONUS);
         }
         client.send("harvest_reward", { drops: [{ item: "stone", qty }] });
         console.log(`[GameRoom] ${player?.nickname ?? client.sessionId} harvested ${data.id} → ${qty} stone`);
@@ -727,7 +762,9 @@ export class GameRoom extends Room<GameRoomOptions> {
         this.broadcast("enemy_dead", { id: enemy.id, x: enemy.x, y: enemy.y });
         player.inventory.push("raw_meat");
         client.send("harvest_reward", { drops: [{ item: "raw_meat", qty: 1 }] });
-        console.log(`[GameRoom] ${player.nickname} killed ${enemy.id}`);
+        // Killing harms sanity
+        player.sanity = Math.max(0, player.sanity - SANITY_KILL_PENALTY);
+        console.log(`[GameRoom] ${player.nickname} killed ${enemy.id} (sanity: ${player.sanity.toFixed(0)})`);
       }
     });
   }

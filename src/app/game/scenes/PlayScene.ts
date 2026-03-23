@@ -483,6 +483,10 @@ export class PlayScene extends Scene {
     room.onMessage("player_damage", (data: { damage: number; hp: number }) => {
       this.showPickupText(this.px, this.py - 50, `-${data.damage} HP`);
     });
+
+    room.onMessage("stats_update", (data: { hp: number; maxHp: number; hunger: number; sanity: number; attack: number; defense: number; nickname: string; isNight: boolean }) => {
+      window.dispatchEvent(new CustomEvent("gameStats", { detail: data }));
+    });
   }
 
   // ── Inventory ─────────────────────────────────────────────────────────────
