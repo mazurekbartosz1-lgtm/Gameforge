@@ -1,10 +1,15 @@
+import AuthButton from "./AuthButton";
+
 export default function Home() {
   return (
     <main className="min-h-screen bg-zinc-950 flex items-center justify-center p-6">
       <div className="w-full max-w-xl flex flex-col gap-6">
-        <h1 className="text-3xl font-bold text-white text-center tracking-tight">
-          GameForge <span className="text-zinc-400 font-normal text-xl">— test generatora</span>
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-white tracking-tight">
+            GameForge <span className="text-zinc-400 font-normal text-xl">— test generatora</span>
+          </h1>
+          <AuthButton />
+        </div>
 
         <div className="flex flex-col gap-3">
           <label htmlFor="description" className="text-zinc-300 text-sm font-medium">

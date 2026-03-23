@@ -579,6 +579,40 @@ Prompt is in PLAN.md under "Wieczór 18".
 
 ---
 
+## Session 19 — 2026-03-23 (Session 7)
+
+### What was done
+- **Wieczór 18 COMPLETE ✅** — Clerk JWT authentication integrated with Colyseus
+- Installed `@clerk/nextjs` (frontend) and `@clerk/backend` (server)
+- `ClerkProvider` added to `src/app/layout.tsx`
+- `src/app/AuthButton.tsx` — new client component using `useClerk()` for sign in/out (SignInButton component didn't support children properly in Clerk v6 — switched to `openSignIn()` method call)
+- `src/app/page.tsx` — AuthButton added to header
+- `ColyseusClient.ts` — `connectRoom(token?, nickname?)` — token passed in matchmake body
+- `PhaserGame.tsx` — `useAuth().getToken()` called before connectRoom
+- `server/src/GameRoom.ts` — `onJoin` made async, verifies token via `verifyToken`, guest fallback when no token
+- `server/src/index.ts` — added `import "dotenv/config"` (was missing — `CLERK_SECRET_KEY` was undefined, causing JWKS fetch failure)
+- `server/.env` created with `CLERK_SECRET_KEY`
+- `server/.env.example` updated with `CLERK_SECRET_KEY` and `CLERK_JWT_KEY`
+- Clerk dashboard: phone number disabled, email OTP only (Polish phone numbers not supported)
+
+### Decisions made
+- Guest fallback kept (no token → userId = sessionId) — strict enforcement deferred until login page is built
+- `dotenv/config` import in `index.ts` is critical — without it all `process.env` vars from `.env` are undefined
+- Clerk v6 `SignInButton` doesn't pass children reliably — use `useClerk().openSignIn()` instead
+- `CLERK_JWT_KEY` added as optional fallback to avoid JWKS network fetch in local dev
+
+### Problems encountered
+- `verifyToken` failed with `jwk-failed-to-resolve` — root cause was missing `dotenv/config`, so `CLERK_SECRET_KEY` was `undefined`
+- `SignedIn`/`SignedOut` components don't exist in `@clerk/nextjs` v6 — replaced with `useUser()` + `useClerk()` hooks
+- `SignInButton` v6 doesn't render children as clickable trigger — replaced with plain button + `openSignIn()`
+
+### Next step
+**Wieczór 19** — Load player state on join from Supabase.
+Prompt is in PLAN.md under "Wieczór 19".
+Remember to add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to `server/.env` and Railway.
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

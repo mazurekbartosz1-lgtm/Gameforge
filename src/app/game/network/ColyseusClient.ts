@@ -10,7 +10,7 @@ const httpUrl = wsUrl.replace(/^wss:\/\//, "https://").replace(/^ws:\/\//, "http
 const client = new Client(wsUrl) as any;
 let room: Room | null = null;
 
-export async function connectRoom(): Promise<Room> {
+export async function connectRoom(token?: string, nickname?: string): Promise<Room> {
   if (room) return room;
 
   // colyseus.js@0.16 expects { room: { name, roomId, processId }, sessionId }
@@ -19,7 +19,7 @@ export async function connectRoom(): Promise<Room> {
   const raw = await fetch(`${httpUrl}/matchmake/joinOrCreate/game_room`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({}),
+    body: JSON.stringify({ token, nickname }),
   }).then((r) => r.json());
 
   const response = {

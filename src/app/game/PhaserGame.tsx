@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useAuth } from "@clerk/nextjs";
 import type { Game } from "phaser";
 
 export default function PhaserGame() {
   const initialized = useRef(false);
   const gameRef = useRef<Game | null>(null);
+  const { getToken } = useAuth();
 
   useEffect(() => {
     if (initialized.current) return;
@@ -16,9 +18,12 @@ export default function PhaserGame() {
       const { PlayScene } = await import("./scenes/PlayScene");
       const { connectRoom } = await import("./network/ColyseusClient");
 
+      // Get Clerk JWT token (null if user not signed in)
+      const token = await getToken().catch(() => null);
+
       // Connect to Colyseus before starting Phaser so getRoom() works in PlayScene
       try {
-        await connectRoom();
+        await connectRoom(token ?? undefined);
       } catch (err) {
         console.warn("Colyseus connection failed (offline?):", err);
       }

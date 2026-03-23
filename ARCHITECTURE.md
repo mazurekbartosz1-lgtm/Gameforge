@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-21 (Session 6, end of Wieczór 17)
+2026-03-23 (Session 7, end of Wieczór 18)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -25,6 +25,7 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ Wieczór 15: Gameplay polish — inventory HUD, harvest detection fix, sprite destroy-on-death, overlapping footprints fix, tree/rock tuning
 - ✅ Wieczór 16: Camera deadzone + lerp, minimap z mgłą wojny, VISION_RADIUS 60→16
 - ✅ Wieczór 17: System wrogów — Hunter enemy, AI chase/attack, zone-based spawning, map collision, debug overlays
+- ✅ Wieczór 18: Clerk auth — JWT token z frontendu do Colyseus, weryfikacja na serwerze, guest fallback
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
@@ -98,6 +99,28 @@ Gameforge/
 - `move` — x, y, direction, animKey
 - `equip` — slot, itemId
 - `activeSlot` — slot index
+
+## Wieczór 18 additions
+
+### Clerk authentication
+- `@clerk/nextjs` installed in root, `ClerkProvider` wrapping layout
+- `src/app/AuthButton.tsx` — client component: `useClerk().openSignIn()` / `signOut()`, shows based on `useUser().isSignedIn`
+- `src/app/page.tsx` — AuthButton in header (sign in / sign out)
+- `ColyseusClient.ts` — `connectRoom(token?, nickname?)` passes token in matchmake body
+- `PhaserGame.tsx` — `useAuth().getToken()` called before `connectRoom`, token passed through
+- `server/src/GameRoom.ts` — `onJoin` async, verifies token via `verifyToken(token, { secretKey, jwtKey })`
+  - Valid token → `player.userId = payload.sub` (Clerk user ID)
+  - Invalid token → `client.leave(4001)`
+  - No token → guest fallback: `player.userId = client.sessionId`
+- `server/src/index.ts` — `import "dotenv/config"` added (was missing — caused `CLERK_SECRET_KEY` to be undefined)
+- `server/.env.example` — added `CLERK_SECRET_KEY`, `CLERK_JWT_KEY`
+
+### Environment variables added
+| Variable | Where |
+|----------|-------|
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | `.env.local`, Vercel |
+| `CLERK_SECRET_KEY` | `.env.local`, `server/.env`, Vercel, Railway |
+| `CLERK_JWT_KEY` | `server/.env`, Railway (optional — used if JWKS fetch fails) |
 
 ## Wieczór 17 additions
 

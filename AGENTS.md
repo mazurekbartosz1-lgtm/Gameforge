@@ -10,3 +10,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 2. **Execute after approval** — implement exactly what was approved. Flag any surprises during implementation.
 3. **Test gate** — when implementation is complete, stop and ask the user to test in the browser before committing.
 4. **Commit & push only after green light** — update ARCHITECTURE.md **and** CLAUDE_HISTORY.md (new session entry: what was done, decisions made, problems encountered, exact next step), then commit and push.
+5. **Environment variables — deploy everywhere** — whenever a new env var is added, remind the user to set it in ALL places before the next test:
+   - `.env.local` (local Next.js dev)
+   - `server/.env` (local Colyseus dev) + `server/.env.example` (documented)
+   - **Vercel** → Settings → Environment Variables (frontend)
+   - **Railway** → Variables (Colyseus game server)

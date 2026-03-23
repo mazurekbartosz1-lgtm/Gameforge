@@ -1,5 +1,6 @@
 import { Room, Client, type RoomOptions } from "@colyseus/core";
 import { Schema, MapSchema, ArraySchema, type } from "@colyseus/schema";
+import { verifyToken } from "@clerk/backend";
 
 interface GameRoomOptions extends RoomOptions {
   state: WorldState;
@@ -202,15 +203,33 @@ export class GameRoom extends Room<GameRoomOptions> {
     console.log(`[GameRoom] created – roomId: ${this.roomId}, seed: ${state.mapSeed}`);
   }
 
-  onJoin(client: Client, options: { userId?: string; nickname?: string }) {
+  async onJoin(client: Client, options: { token?: string; nickname?: string }) {
     const player = new PlayerState();
     player.sessionId = client.sessionId;
-    player.userId = options.userId ?? client.sessionId;
     player.nickname = options.nickname ?? "Player";
     player.x = 400 + Math.random() * 200;
     player.y = 300 + Math.random() * 200;
+
+    // Verify Clerk JWT if provided; guests fall back to sessionId
+    if (options.token) {
+      try {
+        const payload = await verifyToken(options.token, {
+          secretKey: process.env.CLERK_SECRET_KEY,
+          jwtKey: process.env.CLERK_JWT_KEY,
+        });
+        player.userId = payload.sub;
+        console.log(`[GameRoom] ${player.nickname} joined (clerkId: ${payload.sub})`);
+      } catch (err) {
+        console.warn(`[GameRoom] invalid token from ${client.sessionId}:`, err);
+        client.leave(4001);
+        return;
+      }
+    } else {
+      player.userId = client.sessionId;
+      console.log(`[GameRoom] ${player.nickname} joined as guest (${client.sessionId})`);
+    }
+
     this.state.players.set(client.sessionId, player);
-    console.log(`[GameRoom] ${player.nickname} joined (${client.sessionId})`);
 
     // Send existing players to the new client
     const existing: object[] = [];
