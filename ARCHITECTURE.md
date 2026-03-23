@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-23 (Session 10, Supabase player persistence + fog of war persistence)
+2026-03-23 (Session 11, W23+W24 — food nodes, harvest, eat)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -29,6 +29,7 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ Wieczór 19: Player HUD sidebar, strona /status, HomeAuth, statystyki bojowe (atak/obrona), nowa mechanika sanity
 - ✅ UI redesign (Session 9): HUD przebudowany wg Stitch concept — OPERATOR header, TACTICAL_MAP, minimap na HTML canvas, QUEST_OBJ, fix Clerk overflow
 - ✅ Wieczór 20–22 (Session 10): Supabase player persistence — load on join, save on leave + auto-save co 30s, fog of war persistence per-player
+- ✅ Wieczór 23+24 (Session 11): Food nodes (mushrooms/berry bushes), harvest E, eat F, itemConfig + foodConfig
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
@@ -83,6 +84,23 @@ Gameforge/
 | Dev server | ts-node + nodemon |
 | Deployment target | Railway — `gameforge-production-d7c8.up.railway.app` |
 | WebSocket URL | `wss://gameforge-production-d7c8.up.railway.app` |
+
+## Wieczór 23+24 additions (Session 11)
+
+### Food nodes — mushrooms & berry bushes
+- `server/src/itemConfig.ts` (nowy) — `DROP_TABLE`: wood×2, stone×1, mushroom×1, berries×2
+- `server/src/foodConfig.ts` (nowy) — `FOOD_CONFIG`: mushroom/berries/raw_meat/cooked_meat/cooked_mushroom z hungerRestore + hpRestore
+- `MapGenerator.ts` — `foodAtChunk(cx, cy, seed)`: `FOOD_STEP=5` tiles, `FOOD_DENSITY=0.45`, mushrooms w lesie / berry bushes na trawie
+- `GameRoom.ts` — `deadFoodNodes: Map<id, respawnAt>`, handler `harvest` rozszerzony o `mush_*` i `berry_*`, broadcast `food_dead`/`food_respawn`, respawn po 60s w `respawnNodes`, nowy handler `eat`
+- `PlayScene.ts` — generowanie food chunks przy ruchu (`generateFoodChunksAround`), synthetyczne tekstury (`food_mushroom`, `food_berry`) generowane przez Phaser Graphics, `foodInitDone` barrier (jak dead_trees), E zbiera food + local kill, F zjada pierwszą dostępną żywność (priorytet: cooked_meat > cooked_mushroom > mushroom > berries > raw_meat), HUD +4 sloty (Mush/Berries/Meat/C.Meat)
+
+### Klucze i mechaniki
+- ID food nodes: `mush_cx_cy` (grzyb) / `berry_cx_cy` (krzak jagód)
+- Harvest detection: distance ≤48px + inFront check (nie footprint — food nie blokuje ruchu)
+- `eat` message: serwer usuwa item z inventory, dodaje hungerRestore/hpRestore, wywołuje `sendStatsToPlayers`
+- Goście: pełna obsługa (zbieranie + jedzenie działa, brak persistencji jak poprzednio)
+
+---
 
 ## Wieczór 20–22 additions (Session 10)
 

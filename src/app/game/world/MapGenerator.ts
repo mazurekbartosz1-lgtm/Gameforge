@@ -77,6 +77,44 @@ export function rockAtChunk(chunkX: number, chunkY: number, seed: number): { wx:
   return { wx, wy };
 }
 
+// ── Food chunks ──────────────────────────────────────────────────────────────
+
+export const FOOD_STEP = 5; // tiles between food grid cells — denser than trees, sparser than rocks
+
+const FOOD_MAX_OFFSET = 2;
+const FOOD_DENSITY    = 0.45; // ~45% of food chunks have a node
+
+/**
+ * Returns the world-tile position and type (mushroom/berry_bush) of a food node
+ * in grid-chunk (cx, cy), or null if that chunk has none.
+ * Mushrooms spawn in forest; berry bushes spawn on open grass.
+ */
+export function foodAtChunk(
+  cx: number,
+  cy: number,
+  seed: number,
+): { wx: number; wy: number; type: "mushroom" | "berry_bush" } | null {
+  const gx = cx * FOOD_STEP;
+  const gy = cy * FOOD_STEP;
+
+  // Keep spawn area clear
+  if (gx * gx + gy * gy < SPAWN_CLEAR_RADIUS * SPAWN_CLEAR_RADIUS) return null;
+
+  // Cheap probability gate
+  if (terrainHash(gx, gy, seed ^ 0xF00D) > FOOD_DENSITY) return null;
+
+  // Jitter within chunk
+  const h1 = terrainHash(gx, gy, seed ^ 0x5555);
+  const h2 = terrainHash(gx, gy, seed ^ 0x6666);
+  const wx = gx + Math.floor(h1 * FOOD_MAX_OFFSET);
+  const wy = gy + Math.floor(h2 * FOOD_MAX_OFFSET);
+
+  // Mushrooms in forest, berry bushes on open grass
+  const type: "mushroom" | "berry_bush" = isForestTile(wx, wy, seed) ? "mushroom" : "berry_bush";
+
+  return { wx, wy, type };
+}
+
 // ── Forest query ─────────────────────────────────────────────────────────────
 
 /**

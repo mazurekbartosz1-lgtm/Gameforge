@@ -2,6 +2,7 @@ import { Room, Client, type RoomOptions } from "@colyseus/core";
 import { Schema, MapSchema, ArraySchema, type } from "@colyseus/schema";
 import { verifyToken } from "@clerk/backend";
 import { loadPlayer, savePlayer, loadWorldSeed, saveWorldSeed } from "./db.js";
+import { FOOD_CONFIG } from "./foodConfig.js";
 
 interface GameRoomOptions extends RoomOptions {
   state: WorldState;
@@ -187,6 +188,8 @@ export class GameRoom extends Room<GameRoomOptions> {
 
   /** Dead rocks harvested by players — excluded from map collision. */
   private deadRocks = new Set<string>();
+  /** Dead food nodes: id → respawnAt timestamp (ms). Respawn after 60s. */
+  private deadFoodNodes = new Map<string, number>();
   /** Cache of tile-blocked status for enemy map collision. */
   private mapTileBlockedCache = new Map<string, boolean>();
 
@@ -437,6 +440,14 @@ export class GameRoom extends Room<GameRoomOptions> {
         food.respawnAt = 0;
       }
     });
+
+    // Respawn client-side food nodes (mushrooms, berry bushes)
+    for (const [id, respawnAt] of this.deadFoodNodes) {
+      if (now >= respawnAt) {
+        this.deadFoodNodes.delete(id);
+        this.broadcast("food_respawn", { id });
+      }
+    }
   }
 
   private respawnDeadTrees(now: number) {
@@ -804,6 +815,15 @@ export class GameRoom extends Room<GameRoomOptions> {
       client.send("dead_trees_init", Array.from(this.deadTrees.keys()));
     });
 
+    this.onMessage("request_dead_food", (client) => {
+      // Send alive dead-food entries (not yet respawned)
+      const now = Date.now();
+      const deadList = Array.from(this.deadFoodNodes.entries())
+        .filter(([, t]) => t > now)
+        .map(([id, respawnAt]) => ({ id, respawnAt }));
+      client.send("dead_food_init", deadList);
+    });
+
     this.onMessage("harvest", (client, data: { id: string }) => {
       const player = this.state.players.get(client.sessionId);
       if (data.id.startsWith("tree_")) {
@@ -845,7 +865,37 @@ export class GameRoom extends Room<GameRoomOptions> {
         }
         client.send("harvest_reward", { drops: [{ item: "stone", qty }] });
         console.log(`[GameRoom] ${player?.nickname ?? client.sessionId} harvested ${data.id} → ${qty} stone`);
+      } else if (data.id.startsWith("mush_") || data.id.startsWith("berry_")) {
+        if (this.deadFoodNodes.has(data.id)) return;
+        const respawnAt = Date.now() + 60_000;
+        this.deadFoodNodes.set(data.id, respawnAt);
+        this.broadcast("food_dead", { id: data.id, respawnAt });
+        const isMushr = data.id.startsWith("mush_");
+        const drops = isMushr
+          ? [{ item: "mushroom", qty: 1 }]
+          : [{ item: "berries",  qty: 2 }];
+        if (player) {
+          drops.forEach((d) => { for (let i = 0; i < d.qty; i++) player.inventory.push(d.item); });
+          player.sanity = Math.min(100, player.sanity + SANITY_HARVEST_BONUS);
+        }
+        client.send("harvest_reward", { drops });
+        console.log(`[GameRoom] ${player?.nickname ?? client.sessionId} harvested ${data.id} → ${isMushr ? "mushroom" : "berries"}`);
       }
+    });
+
+    this.onMessage("eat", (client, data: { itemId: string }) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player) return;
+      const food = FOOD_CONFIG[data.itemId];
+      if (!food) return;
+      const idx = player.inventory.indexOf(data.itemId);
+      if (idx === -1) return;
+      player.inventory.splice(idx, 1);
+      player.hunger = Math.min(100, player.hunger + food.hungerRestore);
+      if (food.hpRestore !== 0)
+        player.hp = Math.max(0, Math.min(player.maxHp, player.hp + food.hpRestore));
+      this.sendStatsToPlayers();
+      console.log(`[GameRoom] ${player.nickname} ate ${data.itemId} (hunger: ${player.hunger.toFixed(0)}, hp: ${player.hp})`);
     });
 
     this.onMessage("attack_enemy", (client, data: { enemyId: string }) => {

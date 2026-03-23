@@ -8,7 +8,7 @@ import {
   ACTION_DIRS,
   type ActionType,
 } from "../animations/toolAnimations";
-import { isForestTile, treeAtChunk, rockAtChunk, TILE_SIZE, TREE_STEP, ROCK_STEP } from "../world/MapGenerator";
+import { isForestTile, treeAtChunk, rockAtChunk, foodAtChunk, TILE_SIZE, TREE_STEP, ROCK_STEP, FOOD_STEP } from "../world/MapGenerator";
 import { getRoom } from "../network/ColyseusClient";
 
 type Direction = "down" | "up" | "left" | "right";
@@ -43,6 +43,14 @@ interface ResourceNodeData {
   y: number;
   hp: number;
   maxHp: number;
+  isAlive: boolean;
+}
+
+interface FoodNodeData {
+  id: string;
+  type: "mushroom" | "berry_bush";
+  x: number;
+  y: number;
   isAlive: boolean;
 }
 
@@ -102,8 +110,14 @@ export class PlayScene extends Scene {
   // Client-side infinite resource generation
   private generatedTreeChunks = new Set<string>();
   private generatedRockChunks = new Set<string>();
+  private generatedFoodChunks = new Set<string>();
   private deadTrees = new Set<string>();
   private deadRocks = new Set<string>();
+  // Food nodes: id → respawnAt (0 = alive)
+  private deadFoodNodes = new Map<string, number>();
+  private foodNodeData  = new Map<string, FoodNodeData>();
+  private foodSprites   = new Map<string, Phaser.GameObjects.Image>();
+  private foodInitDone  = false;
 
   private mapSeed = 42;
 
@@ -232,7 +246,7 @@ export class PlayScene extends Scene {
     // ── Input ──────────────────────────────────────────────────────────────
     this.cursors    = this.input.keyboard!.createCursorKeys();
     this.wasd       = this.input.keyboard!.addKeys("W,A,S,D") as Record<string, Phaser.Input.Keyboard.Key>;
-    this.actionKeys = this.input.keyboard!.addKeys("SPACE,E")  as Record<string, Phaser.Input.Keyboard.Key>;
+    this.actionKeys = this.input.keyboard!.addKeys("SPACE,E,F")  as Record<string, Phaser.Input.Keyboard.Key>;
 
     // ── Camera — deadzone + lerp follow ───────────────────────────────────
     this.followTarget = this.add.rectangle(this.px, this.py, 1, 1).setAlpha(0);
@@ -261,6 +275,8 @@ export class PlayScene extends Scene {
       // offline/solo: no dead-resource list to wait for
       this.generateTreeChunksAround(0, 0);
       this.generateRockChunksAround(0, 0);
+      this.foodInitDone = true;
+      this.generateFoodChunksAround(0, 0);
     }
   }
 
@@ -490,6 +506,29 @@ export class PlayScene extends Scene {
       this.addItems(data.drops);
     });
 
+    // Food nodes (mushrooms, berry bushes) — client-side generated, server tracks dead state
+    room.onMessage("dead_food_init", (deadList: Array<{ id: string; respawnAt: number }>) => {
+      deadList.forEach(({ id, respawnAt }) => this.deadFoodNodes.set(id, respawnAt));
+      this.foodInitDone = true;
+      this.generateFoodChunksAround(0, 0);
+    });
+    room.send("request_dead_food", {});
+
+    room.onMessage("food_dead", (data: { id: string; respawnAt: number }) => {
+      this.deadFoodNodes.set(data.id, data.respawnAt);
+      const fn = this.foodNodeData.get(data.id);
+      if (fn && fn.isAlive) { fn.isAlive = false; this.killFoodSprite(data.id); }
+    });
+
+    room.onMessage("food_respawn", (data: { id: string }) => {
+      this.deadFoodNodes.delete(data.id);
+      const fn = this.foodNodeData.get(data.id);
+      if (fn) {
+        fn.isAlive = true;
+        this.spawnFoodSprite(fn);
+      }
+    });
+
     room.onMessage("enemy_update", (data: { id: string; x: number; y: number; animKey: string }) => {
       const enemy = this.enemies.get(data.id);
       if (!enemy) {
@@ -523,9 +562,12 @@ export class PlayScene extends Scene {
 
   private initInventoryHud() {
     const ITEMS: Array<{ key: string; label: string; color: string }> = [
-      { key: "wood",     label: "Wood",  color: "#c8a46e" },
-      { key: "stone",    label: "Stone", color: "#aaaaaa" },
-      { key: "raw_meat", label: "Meat",  color: "#e07050" },
+      { key: "wood",        label: "Wood",     color: "#c8a46e" },
+      { key: "stone",       label: "Stone",    color: "#aaaaaa" },
+      { key: "mushroom",    label: "Mush",     color: "#88cc44" },
+      { key: "berries",     label: "Berries",  color: "#ee7788" },
+      { key: "raw_meat",    label: "Meat",     color: "#e07050" },
+      { key: "cooked_meat", label: "C.Meat",   color: "#e09040" },
     ];
     const slotW  = 80;
     const totalW = ITEMS.length * slotW + (ITEMS.length - 1) * 8;
@@ -603,7 +645,25 @@ export class PlayScene extends Scene {
   // ── Resources ─────────────────────────────────────────────────────────────
 
   private createResourceTextures() {
-    // Textures loaded via preload — nothing to generate procedurally
+    // Generate synthetic food textures (16×16 px, 2× scale = 32px on screen)
+    if (!this.textures.exists("food_mushroom")) {
+      const g = this.make.graphics({ x: 0, y: 0 });
+      g.fillStyle(0x884422, 1); g.fillRect(6, 10, 4, 6); // stem
+      g.fillStyle(0x44aa22, 1); g.fillCircle(8, 8, 7);   // cap
+      g.fillStyle(0xffffff, 0.3); g.fillCircle(5, 6, 2); // highlight
+      g.generateTexture("food_mushroom", 16, 16);
+      g.destroy();
+    }
+    if (!this.textures.exists("food_berry")) {
+      const g = this.make.graphics({ x: 0, y: 0 });
+      g.fillStyle(0x226622, 1); g.fillCircle(8, 9, 7);   // bush
+      g.fillStyle(0xdd3344, 1);
+      g.fillCircle(5, 7, 2.5);  // berries
+      g.fillCircle(10, 6, 2);
+      g.fillCircle(8, 12, 2.5);
+      g.generateTexture("food_berry", 16, 16);
+      g.destroy();
+    }
   }
 
   /** Destroy a resource sprite immediately and remove it from the map. */
@@ -714,6 +774,68 @@ export class PlayScene extends Scene {
         this.addResourceSprite({ id, type: "rock", x, y, hp: 3, maxHp: 3, isAlive });
       }
     }
+  }
+
+  /** Spawn food sprites for all FOOD_STEP-chunks within vision radius of (tileX, tileY). */
+  private generateFoodChunksAround(tileX: number, tileY: number) {
+    const chunkRadius = Math.ceil(VISION_RADIUS / FOOD_STEP) + 2;
+    const playerCX = Math.floor(tileX / FOOD_STEP);
+    const playerCY = Math.floor(tileY / FOOD_STEP);
+
+    for (let cy = playerCY - chunkRadius; cy <= playerCY + chunkRadius; cy++) {
+      for (let cx = playerCX - chunkRadius; cx <= playerCX + chunkRadius; cx++) {
+        const key = `${cx},${cy}`;
+        if (this.generatedFoodChunks.has(key)) continue;
+        this.generatedFoodChunks.add(key);
+
+        const result = foodAtChunk(cx, cy, this.mapSeed);
+        if (!result) continue;
+
+        const { wx, wy, type } = result;
+        const prefix = type === "mushroom" ? "mush" : "berry";
+        const id = `${prefix}_${cx}_${cy}`;
+        const x = wx * TILE_SIZE + TILE_SIZE / 2;
+        const y = wy * TILE_SIZE + TILE_SIZE / 2;
+        const isAlive = !this.deadFoodNodes.has(id);
+        const fn: FoodNodeData = { id, type, x, y, isAlive };
+        this.foodNodeData.set(id, fn);
+        if (isAlive) this.spawnFoodSprite(fn);
+      }
+    }
+  }
+
+  private spawnFoodSprite(fn: FoodNodeData) {
+    if (this.foodSprites.has(fn.id)) return;
+    const texKey = fn.type === "mushroom" ? "food_mushroom" : "food_berry";
+    const sprite = this.add.image(fn.x, fn.y, texKey)
+      .setScale(2)
+      .setDepth(2)
+      .setVisible(false); // visibility managed in update
+    this.foodSprites.set(fn.id, sprite);
+  }
+
+  private killFoodSprite(id: string) {
+    const sprite = this.foodSprites.get(id);
+    if (sprite) { sprite.destroy(); this.foodSprites.delete(id); }
+  }
+
+  /** Find nearest alive food node within harvest reach (48px) in facing direction. */
+  private findAdjacentFood(): string | null {
+    const REACH = 48;
+    for (const [id, fn] of this.foodNodeData) {
+      if (!fn.isAlive) continue;
+      const dx = fn.x - this.px;
+      const dy = fn.y - this.py;
+      if (dx * dx + dy * dy > REACH * REACH) continue;
+      // Check it's roughly in front
+      const inFront =
+        (this.direction === "right" && dx > -16) ||
+        (this.direction === "left"  && dx < 16)  ||
+        (this.direction === "down"  && dy > -16) ||
+        (this.direction === "up"    && dy < 16);
+      if (inFront) return id;
+    }
+    return null;
   }
 
   /** Check player's adjacent tiles (4 directions) for a harvestable resource. */
@@ -861,6 +983,7 @@ export class PlayScene extends Scene {
       ctx.fillRect(mx, my, 2, 2);
     });
 
+
     // Remote players
     this.remotePlayers.forEach((remote) => {
       const mx = Math.round(MW / 2 + (remote.x / TILE_SIZE - playerTileX) / SCALE);
@@ -931,6 +1054,7 @@ export class PlayScene extends Scene {
     }
     this.collisionGfx.fillStyle(0xff8800, 0.30);
     this.collisionGfx.fillRect(atkX!, atkY!, atkW!, atkH!);
+
   }
 
   private drawGrid() {
@@ -987,6 +1111,7 @@ export class PlayScene extends Scene {
 
     // Action keys
     const eJustDown     = Phaser.Input.Keyboard.JustDown(this.actionKeys["E"]);
+    const fJustDown     = Phaser.Input.Keyboard.JustDown(this.actionKeys["F"]);
     const spaceJustDown = Phaser.Input.Keyboard.JustDown(this.actionKeys["SPACE"]);
     if (spaceJustDown) {
       // Find closest enemy in facing direction ≤64px and send attack
@@ -1045,6 +1170,7 @@ export class PlayScene extends Scene {
       this.revealAround(tileX, tileY);
       this.generateTreeChunksAround(tileX, tileY);
       this.generateRockChunksAround(tileX, tileY);
+      if (this.foodInitDone || !this.room) this.generateFoodChunksAround(tileX, tileY);
     }
 
     // Enemy zone — trigger server spawn when player enters a new zone
@@ -1125,9 +1251,18 @@ export class PlayScene extends Scene {
       sprite.setVisible(rd.isAlive && (dx * dx + dy * dy) <= visionPxSq);
     });
 
-    // E key: harvest tree/rock adjacent to player (tile-based detection)
+    // Food node visibility
+    this.foodNodeData.forEach((fn, id) => {
+      const sprite = this.foodSprites.get(id);
+      if (!sprite) return;
+      const dx = fn.x - this.px;
+      const dy = fn.y - this.py;
+      sprite.setVisible(fn.isAlive && (dx * dx + dy * dy) <= visionPxSq);
+    });
+
+    // E key: harvest tree/rock/food adjacent to player
     if (eJustDown && !this.isActionPlaying) {
-      const harvestId = this.findAdjacentResource(tileX, tileY);
+      const harvestId = this.findAdjacentResource(tileX, tileY) ?? this.findAdjacentFood();
       if (harvestId) {
         // Immediate local update so player can't double-harvest
         if (harvestId.startsWith("tree_")) {
@@ -1138,17 +1273,34 @@ export class PlayScene extends Scene {
           this.deadRocks.add(harvestId);
           const rd = this.resourceData.get(harvestId);
           if (rd && rd.isAlive) { rd.isAlive = false; this.unregisterFootprint(rd); this.killResourceSprite(harvestId); }
+        } else if (harvestId.startsWith("mush_") || harvestId.startsWith("berry_")) {
+          const fn = this.foodNodeData.get(harvestId);
+          if (fn && fn.isAlive) { fn.isAlive = false; this.killFoodSprite(harvestId); }
         }
         if (this.room) {
           this.room.send("harvest", { id: harvestId });
         } else {
           // Offline mode: give items locally
-          const isTree = harvestId.startsWith("tree_");
-          const item   = isTree ? "wood" : "stone";
-          const qty    = isTree ? 2 + Math.floor(Math.random() * 3) : 1 + Math.floor(Math.random() * 2);
-          this.addItems([{ item, qty }]);
+          if (harvestId.startsWith("tree_"))        this.addItems([{ item: "wood",     qty: 2 + Math.floor(Math.random() * 3) }]);
+          else if (harvestId.startsWith("rock_"))   this.addItems([{ item: "stone",    qty: 1 + Math.floor(Math.random() * 2) }]);
+          else if (harvestId.startsWith("mush_"))   this.addItems([{ item: "mushroom", qty: 1 }]);
+          else if (harvestId.startsWith("berry_"))  this.addItems([{ item: "berries",  qty: 2 }]);
         }
         this.playActionAnim("collect");
+      }
+    }
+
+    // F key: eat first available food from inventory
+    if (fJustDown) {
+      const eatOrder = ["cooked_meat", "cooked_mushroom", "mushroom", "berries", "raw_meat"];
+      for (const itemId of eatOrder) {
+        if ((this.inventory.get(itemId) ?? 0) > 0) {
+          this.inventory.set(itemId, (this.inventory.get(itemId) ?? 0) - 1);
+          this.updateInventoryHud();
+          this.showPickupText(this.px, this.py - 50, `Zjedono: ${itemId.replace("_", " ")}`);
+          if (this.room) this.room.send("eat", { itemId });
+          break;
+        }
       }
     }
 

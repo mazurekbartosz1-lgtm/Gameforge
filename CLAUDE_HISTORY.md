@@ -720,6 +720,33 @@ Następna rzecz do zrobienia: dalsza rozbudowa gameplayu (zbieranie, crafting, b
 
 ---
 
+## Session 23 — 2026-03-23 (Session 11)
+
+### What was done
+- **Wieczór 23+24 COMPLETE ✅** — food nodes (grzyby + krzaki jagód), harvest, eat
+- `server/src/itemConfig.ts` (nowy) — DROP_TABLE dla tree/stone/mushroom/berry_bush
+- `server/src/foodConfig.ts` (nowy) — FOOD_CONFIG z hungerRestore/hpRestore dla 5 rodzajów jedzenia
+- `MapGenerator.ts` — dodano `foodAtChunk(cx, cy, seed)` + `FOOD_STEP=5`, `FOOD_DENSITY=0.45`; grzyby w lesie, jagody na trawie
+- `GameRoom.ts` — `deadFoodNodes: Map<id, respawnAt>`, rozszerzony handler `harvest` (mush_*/berry_*), broadcast `food_dead`/`food_respawn`, respawn po 60s w `respawnNodes`, nowy handler `eat` (usuwa item, dodaje hunger/hp, wywołuje sendStatsToPlayers)
+- `PlayScene.ts` — `generateFoodChunksAround`, synthetyczne tekstury Phaser Graphics (food_mushroom zielony, food_berry krzak z czerwonymi jagodami), barrier `foodInitDone`, E harvest food, F eat (priorytet: cooked_meat > cooked_mushroom > mushroom > berries > raw_meat), HUD +4 sloty
+
+### Decisions made
+- Food nodes NIE blokują ruchu gracza — tylko resources (drzewa/kamienie) mają footprint w tileToResources
+- Harvest detection food: distance ≤48px + inFront check (zamiast tile footprint)
+- ID: `mush_cx_cy` / `berry_cx_cy` — nie kolidują z `tree_` / `rock_`
+- Synthetyczne tekstury (Phaser Graphics → generateTexture) zamiast sprite sheetów — szybsze, nie wymagają identyfikacji ramek w arkuszach
+- F key: zjada pierwszy dostępny pokarm wg priorytetu (gotowane przed surowym)
+- Goście: zbieranie i jedzenie działa; brak persistencji jak poprzednio
+
+### Problems encountered
+- `this.make.graphics({ add: false })` — TypeScript odrzucił `add` jako nieznane pole w Phaser 3.90; fix: usunięcie `add: false` (obiekt i tak nie jest dodawany do sceny jeśli nie wywołamy `.add()`)
+
+### Next step
+**Wieczór 25** — Inventory UI 4×5 grid + kliknięcie slotu + jedzenie przez UI.
+Sprawdź PLAN.md pod Wieczór 25.
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,
