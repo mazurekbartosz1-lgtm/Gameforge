@@ -917,155 +917,7 @@ Confirm when done and show me what was created.
 
 ---
 
-## TYDZIEŃ 6 — Building and cooking
-
-### [ ] Wieczór 26: BuildingConfig + build mode
-
-```
-Implement building placement with a green/red preview system.
-
-Create src/shared/buildingConfig.ts:
-
-export interface BuildingConfig {
-  id: string
-  name: string
-  width: number   // in tiles
-  height: number  // in tiles
-  cost: Record<string, number>  // { wood: 5 }
-  hp: number
-  maxHp: number
-  sprite: string  // path relative to /assets/
-}
-
-export const BUILDING_CONFIG: Record<string, BuildingConfig> = {
-  wall_wood: { id: 'wall_wood', name: 'Wood Wall', width: 1, height: 1,
-    cost: { wood: 2 }, hp: 50, maxHp: 50,
-    sprite: 'Pixel Crawler - Free Pack 2.0.4/.../Structures/Wall_wood.png' },
-  bonfire: { id: 'bonfire', name: 'Bonfire', width: 1, height: 1,
-    cost: { wood: 5 }, hp: 30, maxHp: 30,
-    sprite: 'Pixel Crawler - Free Pack 2.0.4/.../Structures/Bonfire.png' },
-  cooking_pot: { id: 'cooking_pot', name: 'Cooking Pot', width: 1, height: 1,
-    cost: { stone: 5 }, hp: 40, maxHp: 40,
-    sprite: 'Pixel Crawler - Free Pack 2.0.4/.../Structures/Pot.png' },
-}
-
-Check public/assets/ASSETS_MAP.md for exact sprite paths; update to match real files.
-
-CLIENT (src/app/game/scenes/PlayScene.ts):
-1. Press B to enter build mode. A build menu (simple Phaser UI) shows available buildings.
-2. On selecting a building: show a ghost sprite following the mouse cursor.
-   - Green tint (setTint(0x00ff00)) if placement is valid (no collision with existing buildings/tiles).
-   - Red tint (setTint(0xff0000)) if invalid.
-3. On left-click: validate cost (check player.inventory), then send:
-     room.send('place_building', { type, x, y })
-4. Press Escape to exit build mode.
-
-Confirm when done and show me what was created.
-```
-
----
-
-### [ ] Wieczór 27: Buildings in world with collisions and HP
-
-```
-Render buildings from Colyseus WorldState and add physics collisions.
-
-SERVER (server/src/GameRoom.ts):
-1. Add 'place_building' message handler:
-   - Validate player has required resources (check player.inventory).
-   - Validate no existing building within 16px at that position.
-   - Deduct resources from player.inventory.
-   - Create a BuildingState and add to this.state.buildings.
-   - Assign a unique id: crypto.randomUUID() (import crypto from 'node:crypto').
-
-2. Add 'damage_building' message handler:
-   - Receives { buildingId, damage }
-   - Reduces building.hp by damage.
-   - If hp <= 0: remove from this.state.buildings (buildings.delete(id)).
-
-CLIENT (src/app/game/scenes/PlayScene.ts):
-1. On room.state.buildings.onAdd(building):
-   - Spawn a sprite at building.x, building.y with the correct sprite from BUILDING_CONFIG.
-   - Add the sprite to a staticGroup for Arcade Physics:
-       this.physics.add.staticGroup()
-   - Add a collider between the player and the staticGroup.
-2. On room.state.buildings.onRemove(building):
-   - Remove the sprite and refresh the staticGroup.
-3. Show an HP bar above each building sprite that updates on HP change.
-
-Confirm when done and show me what was created.
-```
-
----
-
-### [ ] Wieczór 28: Bonfire — basic cooking
-
-```
-Implement the Bonfire cooking station (no recipe system — just convert raw food to cooked).
-
-SERVER (server/src/GameRoom.ts):
-1. Add 'cook_bonfire' message handler:
-   - Receives { buildingId, itemId }
-   - Validate: building type === 'bonfire', player within 60px, item is cookable
-     (FOOD_CONFIG[itemId].cookable === true).
-   - Remove itemId x1 from player.inventory.
-   - After FOOD_CONFIG[itemId].cookTimeMs / 2 ms (bonfire is faster — half time):
-     push FOOD_CONFIG[itemId].cookResult into player.inventory.
-   - Use this.clock.setTimeout() for the delay.
-   - Broadcast 'cooking_started' event with { buildingId, itemId, playerId: client.sessionId }.
-
-CLIENT:
-1. When player presses E near a Bonfire:
-   - Open a small UI (Phaser container) showing:
-       "Cook what?" and a list of cookable items in player inventory.
-   - On selecting an item: send room.send('cook_bonfire', { buildingId, itemId }).
-2. On 'cooking_started' broadcast: play a fire particle effect on the bonfire sprite.
-3. The cooked item automatically appears in inventory when done (inventory onChange fires).
-
-Confirm when done and show me what was created.
-```
-
----
-
-### [ ] Wieczór 29: ~~Crafting~~ — USUNIĘTY (na razie)
-
-*Krafting (Workbench, Anvil, receptury craftingu) usunięty z planu na ten etap.*
-
----
-
-### [ ] Wieczór 30: Save buildings to Supabase + load on room create
-
-```
-Persist buildings to Supabase and reload them when a Colyseus room is created.
-
-SERVER (server/src/db.ts):
-1. Add saveBuildings(buildings: MapSchema<BuildingState>, groupId: string):
-   - UPSERT all buildings to the buildings table.
-   - Use supabaseAdmin.from('buildings').upsert([...]).
-
-2. Add loadBuildings(groupId: string): Promise<BuildingState[]>
-   - SELECT * FROM buildings WHERE group_id = groupId.
-   - Map rows to BuildingState objects.
-
-3. Add deleteBuilding(buildingId: string):
-   - DELETE FROM buildings WHERE id = buildingId.
-
-SERVER (server/src/GameRoom.ts):
-1. In onCreate(options): call loadBuildings(options.groupId ?? 'default').
-   Populate this.state.buildings with loaded data.
-   If no groupId, use a hardcoded default group UUID for development.
-
-2. In the 'place_building' handler: after adding to state, call saveBuildings().
-3. In the 'damage_building' handler: after removing from state, call deleteBuilding().
-
-4. Add auto-save for buildings in the 60-second clock interval (alongside player saves).
-
-Confirm when done and show me what was created.
-```
-
----
-
-## TYDZIEŃ 7 — GameForge platform
+## TYDZIEŃ 6 — GameForge platform
 
 ### [ ] Wieczór 31: Group creation API
 
@@ -1251,7 +1103,7 @@ Confirm when done and show me what was created.
 
 ---
 
-## TYDZIEŃ 8 — Visual variants and RuleEngine
+## TYDZIEŃ 7 — Visual variants and RuleEngine
 
 ### [ ] Wieczór 36: Monster tint system
 
@@ -1480,7 +1332,7 @@ Confirm when done and show me what was created.
 
 ---
 
-## TYDZIEŃ 9 — AI modifications
+## TYDZIEŃ 8 — AI modifications
 
 ### [ ] Wieczór 41: Voice/text input component
 
@@ -1680,7 +1532,7 @@ Confirm when done and show me what was created.
 
 ---
 
-## TYDZIEŃ 10 — Voting and launch
+## TYDZIEŃ 9 — Voting and launch
 
 ### [ ] Wieczór 46: Voting system
 
@@ -1884,6 +1736,156 @@ Finally, update CLAUDE_HISTORY.md Session 10 with:
 Then commit: git add . && git commit -m "fix: pre-launch bugs from user testing" && git push
 
 Confirm when done and show me the list of bugs found and fixed.
+```
+
+---
+
+---
+
+## TYDZIEŃ 10 — Building and cooking
+
+### [ ] Wieczór 26: BuildingConfig + build mode
+
+```
+Implement building placement with a green/red preview system.
+
+Create src/shared/buildingConfig.ts:
+
+export interface BuildingConfig {
+  id: string
+  name: string
+  width: number   // in tiles
+  height: number  // in tiles
+  cost: Record<string, number>  // { wood: 5 }
+  hp: number
+  maxHp: number
+  sprite: string  // path relative to /assets/
+}
+
+export const BUILDING_CONFIG: Record<string, BuildingConfig> = {
+  wall_wood: { id: 'wall_wood', name: 'Wood Wall', width: 1, height: 1,
+    cost: { wood: 2 }, hp: 50, maxHp: 50,
+    sprite: 'Pixel Crawler - Free Pack 2.0.4/.../Structures/Wall_wood.png' },
+  bonfire: { id: 'bonfire', name: 'Bonfire', width: 1, height: 1,
+    cost: { wood: 5 }, hp: 30, maxHp: 30,
+    sprite: 'Pixel Crawler - Free Pack 2.0.4/.../Structures/Bonfire.png' },
+  cooking_pot: { id: 'cooking_pot', name: 'Cooking Pot', width: 1, height: 1,
+    cost: { stone: 5 }, hp: 40, maxHp: 40,
+    sprite: 'Pixel Crawler - Free Pack 2.0.4/.../Structures/Pot.png' },
+}
+
+Check public/assets/ASSETS_MAP.md for exact sprite paths; update to match real files.
+
+CLIENT (src/app/game/scenes/PlayScene.ts):
+1. Press B to enter build mode. A build menu (simple Phaser UI) shows available buildings.
+2. On selecting a building: show a ghost sprite following the mouse cursor.
+   - Green tint (setTint(0x00ff00)) if placement is valid (no collision with existing buildings/tiles).
+   - Red tint (setTint(0xff0000)) if invalid.
+3. On left-click: validate cost (check player.inventory), then send:
+     room.send('place_building', { type, x, y })
+4. Press Escape to exit build mode.
+
+Confirm when done and show me what was created.
+```
+
+---
+
+### [ ] Wieczór 27: Buildings in world with collisions and HP
+
+```
+Render buildings from Colyseus WorldState and add physics collisions.
+
+SERVER (server/src/GameRoom.ts):
+1. Add 'place_building' message handler:
+   - Validate player has required resources (check player.inventory).
+   - Validate no existing building within 16px at that position.
+   - Deduct resources from player.inventory.
+   - Create a BuildingState and add to this.state.buildings.
+   - Assign a unique id: crypto.randomUUID() (import crypto from 'node:crypto').
+
+2. Add 'damage_building' message handler:
+   - Receives { buildingId, damage }
+   - Reduces building.hp by damage.
+   - If hp <= 0: remove from this.state.buildings (buildings.delete(id)).
+
+CLIENT (src/app/game/scenes/PlayScene.ts):
+1. On room.state.buildings.onAdd(building):
+   - Spawn a sprite at building.x, building.y with the correct sprite from BUILDING_CONFIG.
+   - Add the sprite to a staticGroup for Arcade Physics:
+       this.physics.add.staticGroup()
+   - Add a collider between the player and the staticGroup.
+2. On room.state.buildings.onRemove(building):
+   - Remove the sprite and refresh the staticGroup.
+3. Show an HP bar above each building sprite that updates on HP change.
+
+Confirm when done and show me what was created.
+```
+
+---
+
+### [ ] Wieczór 28: Bonfire — basic cooking
+
+```
+Implement the Bonfire cooking station (no recipe system — just convert raw food to cooked).
+
+SERVER (server/src/GameRoom.ts):
+1. Add 'cook_bonfire' message handler:
+   - Receives { buildingId, itemId }
+   - Validate: building type === 'bonfire', player within 60px, item is cookable
+     (FOOD_CONFIG[itemId].cookable === true).
+   - Remove itemId x1 from player.inventory.
+   - After FOOD_CONFIG[itemId].cookTimeMs / 2 ms (bonfire is faster — half time):
+     push FOOD_CONFIG[itemId].cookResult into player.inventory.
+   - Use this.clock.setTimeout() for the delay.
+   - Broadcast 'cooking_started' event with { buildingId, itemId, playerId: client.sessionId }.
+
+CLIENT:
+1. When player presses E near a Bonfire:
+   - Open a small UI (Phaser container) showing:
+       "Cook what?" and a list of cookable items in player inventory.
+   - On selecting an item: send room.send('cook_bonfire', { buildingId, itemId }).
+2. On 'cooking_started' broadcast: play a fire particle effect on the bonfire sprite.
+3. The cooked item automatically appears in inventory when done (inventory onChange fires).
+
+Confirm when done and show me what was created.
+```
+
+---
+
+### [ ] Wieczór 29: ~~Crafting~~ — USUNIĘTY (na razie)
+
+*Krafting (Workbench, Anvil, receptury craftingu) usunięty z planu na ten etap.*
+
+---
+
+### [ ] Wieczór 30: Save buildings to Supabase + load on room create
+
+```
+Persist buildings to Supabase and reload them when a Colyseus room is created.
+
+SERVER (server/src/db.ts):
+1. Add saveBuildings(buildings: MapSchema<BuildingState>, groupId: string):
+   - UPSERT all buildings to the buildings table.
+   - Use supabaseAdmin.from('buildings').upsert([...]).
+
+2. Add loadBuildings(groupId: string): Promise<BuildingState[]>
+   - SELECT * FROM buildings WHERE group_id = groupId.
+   - Map rows to BuildingState objects.
+
+3. Add deleteBuilding(buildingId: string):
+   - DELETE FROM buildings WHERE id = buildingId.
+
+SERVER (server/src/GameRoom.ts):
+1. In onCreate(options): call loadBuildings(options.groupId ?? 'default').
+   Populate this.state.buildings with loaded data.
+   If no groupId, use a hardcoded default group UUID for development.
+
+2. In the 'place_building' handler: after adding to state, call saveBuildings().
+3. In the 'damage_building' handler: after removing from state, call deleteBuilding().
+
+4. Add auto-save for buildings in the 60-second clock interval (alongside player saves).
+
+Confirm when done and show me what was created.
 ```
 
 ---
