@@ -378,7 +378,7 @@ DONE — Stitch projekt "Gameforge — Neon Quest UI" (ID: 11496012017862414056)
 
 ---
 
-### [ ] Wieczór 20: Supabase tables setup ⭐ NASTĘPNE
+### [x] Wieczór 20: Supabase tables setup
 
 ```
 Set up Supabase database schema for Gameforge.
@@ -489,7 +489,7 @@ DONE — `@clerk/backend` zainstalowany w server/. `onJoin` async, `verifyToken(
 
 ---
 
-### [ ] Wieczór 21: Load player state on join from Supabase
+### [x] Wieczór 21: Load player state on join from Supabase
 
 ```
 When a player joins the Colyseus room, load their saved state from Supabase
@@ -518,7 +518,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 22: Save player state on leave + auto-save every 60s
+### [x] Wieczór 22: Save player state on leave + auto-save every 60s
 
 ```
 Persist player state to Supabase when they leave the room and every 60 seconds.
@@ -551,7 +551,7 @@ Confirm when done and show me what was created.
 
 ## TYDZIEŃ 5 — Resources, inventory, food, enemies
 
-### [~] Wieczór 23: Harvest system (częściowo zrobiony)
+### [x] Wieczór 23: Harvest system
 
 ```
 Implement the harvest system — players can collect resources by interacting with
@@ -594,7 +594,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 24: Food items config
+### [x] Wieczór 24: Food items config
 
 ```
 Create a food item configuration system.
@@ -651,7 +651,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 25: Inventory UI 4×5 grid + eat action
+### [ ] Wieczór 25: Inventory UI 4×5 grid + eat action ⭐ NASTĘPNE
 
 ```
 Create an inventory UI in the Phaser game.
