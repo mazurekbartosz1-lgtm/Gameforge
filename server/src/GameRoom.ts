@@ -1,6 +1,7 @@
 import { Room, Client, type RoomOptions } from "@colyseus/core";
 import { Schema, MapSchema, ArraySchema, type } from "@colyseus/schema";
 import { verifyToken } from "@clerk/backend";
+import { loadPlayer, savePlayer, loadWorldSeed, saveWorldSeed } from "./db.js";
 
 interface GameRoomOptions extends RoomOptions {
   state: WorldState;
@@ -189,6 +190,9 @@ export class GameRoom extends Room<GameRoomOptions> {
   /** Cache of tile-blocked status for enemy map collision. */
   private mapTileBlockedCache = new Map<string, boolean>();
 
+  /** Fog-of-war tiles discovered per player (sessionId → "tx,ty"[]). */
+  private playerFog = new Map<string, string[]>();
+
   /** Per-enemy velocity decided by AI tick, applied every move tick. */
   private enemyVelocities = new Map<string, { vx: number; vy: number }>();
   /** Tracks which enemy spawn zones have already been activated. */
@@ -196,13 +200,31 @@ export class GameRoom extends Room<GameRoomOptions> {
   /** Accumulated ms since last full game tick (hunger, AI decision, etc.). */
   private gameTickAccum = 0;
 
-  onCreate(_options: any) {
+  async onCreate(_options: any) {
     const state = new WorldState();
-    state.mapSeed = Math.floor(Math.random() * 2_147_483_647); // random uint31
+    // Load persistent seed from Supabase; generate and save if first time
+    const savedSeed = await loadWorldSeed();
+    if (savedSeed !== null) {
+      state.mapSeed = savedSeed;
+      console.log(`[GameRoom] Loaded world seed: ${savedSeed}`);
+    } else {
+      state.mapSeed = Math.floor(Math.random() * 2_147_483_647);
+      await saveWorldSeed(state.mapSeed);
+      console.log(`[GameRoom] Generated new world seed: ${state.mapSeed}`);
+    }
     this.setState(state);
     // Single interval at ENEMY_MOVE_RATE (100ms); game logic fires every TICK_RATE ms via accumulator.
     this.setSimulationInterval((dt: number) => this.masterTick(dt), ENEMY_MOVE_RATE);
     this.registerMessageHandlers();
+    // Auto-save all players every 30 seconds
+    this.clock.setInterval(async () => {
+      const saves: Promise<void>[] = [];
+      this.state.players.forEach((player) => {
+        const fog = this.playerFog.get(player.sessionId) ?? [];
+        saves.push(savePlayer(player, fog));
+      });
+      await Promise.allSettled(saves);
+    }, 30_000);
     console.log(`[GameRoom] created – roomId: ${this.roomId}, seed: ${state.mapSeed}`);
   }
 
@@ -221,7 +243,62 @@ export class GameRoom extends Room<GameRoomOptions> {
           jwtKey: process.env.CLERK_JWT_KEY,
         });
         player.userId = payload.sub;
-        console.log(`[GameRoom] ${player.nickname} joined (clerkId: ${payload.sub})`);
+
+        // If this userId is already in the room (e.g. F5 before onLeave completes),
+        // take over their in-memory position and remove the stale session.
+        let staleSessionId: string | null = null;
+        this.state.players.forEach((p, sid) => {
+          if (p.userId === payload.sub) staleSessionId = sid;
+        });
+        if (staleSessionId) {
+          const stale = this.state.players.get(staleSessionId)!;
+          player.x = stale.x;
+          player.y = stale.y;
+          player.hp = stale.hp;
+          player.maxHp = stale.maxHp;
+          player.hunger = stale.hunger;
+          player.sanity = stale.sanity;
+          player.attack = stale.attack;
+          player.defense = stale.defense;
+          player.activeSlot = stale.activeSlot;
+          stale.inventory.forEach((item) => player.inventory.push(item));
+          stale.equipment.forEach((itemId, slot) => player.equipment.set(slot, itemId));
+          // Move fog to new session
+          const staleFog = this.playerFog.get(staleSessionId) ?? [];
+          this.playerFog.set(client.sessionId, staleFog);
+          this.playerFog.delete(staleSessionId);
+          this.state.players.delete(staleSessionId);
+          this.broadcast("player_remove", { sessionId: staleSessionId }, { except: client });
+          console.log(`[GameRoom] Took over stale session ${staleSessionId} for ${player.nickname}`);
+        } else {
+          // Fresh join — load from Supabase
+          const saved = await loadPlayer(payload.sub, player.nickname);
+          if (saved) {
+            player.nickname = saved.nickname;
+            player.x = saved.x;
+            player.y = saved.y;
+            player.hp = saved.hp;
+            player.maxHp = saved.max_hp;
+            player.hunger = saved.hunger;
+            player.sanity = saved.sanity;
+            player.attack = saved.attack;
+            player.defense = saved.defense;
+            if (Array.isArray(saved.inventory)) {
+              saved.inventory.forEach((item) => player.inventory.push(item));
+            }
+            if (saved.equipment && typeof saved.equipment === "object") {
+              Object.entries(saved.equipment).forEach(([slot, itemId]) => {
+                player.equipment.set(slot, itemId);
+              });
+            }
+            player.activeSlot = saved.active_slot;
+            // Restore fog
+            this.playerFog.set(client.sessionId, Array.isArray(saved.fog) ? saved.fog : []);
+          } else {
+            this.playerFog.set(client.sessionId, []);
+          }
+          console.log(`[GameRoom] ${player.nickname} joined (clerkId: ${payload.sub})`);
+        }
       } catch (err) {
         console.warn(`[GameRoom] invalid token from ${client.sessionId}:`, err);
         client.leave(4001);
@@ -256,10 +333,13 @@ export class GameRoom extends Room<GameRoomOptions> {
     }, { except: client });
   }
 
-  onLeave(client: Client, _code?: number) {
+  async onLeave(client: Client, _code?: number) {
     const player = this.state.players.get(client.sessionId);
     if (player) {
-      player.isOnline = false;
+      const fog = this.playerFog.get(client.sessionId) ?? [];
+      await savePlayer(player, fog);
+      this.playerFog.delete(client.sessionId);
+      this.state.players.delete(client.sessionId);
     }
     this.broadcast("player_remove", { sessionId: client.sessionId });
     console.log(`[GameRoom] ${client.sessionId} left`);
@@ -270,9 +350,7 @@ export class GameRoom extends Room<GameRoomOptions> {
     let authenticated = 0;
     let guests = 0;
     this.state.players.forEach((p) => {
-      if (p.isOnline) {
-        p.userId === p.sessionId ? guests++ : authenticated++;
-      }
+      p.userId === p.sessionId ? guests++ : authenticated++;
     });
     this.setMetadata({ authenticated, guests });
   }
@@ -663,6 +741,31 @@ export class GameRoom extends Room<GameRoomOptions> {
         }
       });
       client.send("players_init", existing);
+
+      const self = this.state.players.get(client.sessionId);
+      if (self) {
+        // Spawn at saved position — only for authenticated players (guests always start fresh)
+        const isAuthenticated = self.userId !== self.sessionId;
+        if (isAuthenticated && (self.x !== 0 || self.y !== 0)) {
+          client.send("spawn_at", { x: self.x, y: self.y });
+        }
+        // Restore fog — authenticated get their saved tiles, guests get empty
+        const fog = isAuthenticated ? (this.playerFog.get(client.sessionId) ?? []) : [];
+        client.send("fog_load", fog);
+      }
+    });
+
+    this.onMessage("fog_update", (client, tiles: string[]) => {
+      if (!Array.isArray(tiles)) return;
+      const existing = this.playerFog.get(client.sessionId);
+      if (!existing) {
+        // Guest — ignore
+        return;
+      }
+      // Merge new tiles into the server-side set
+      const merged = new Set(existing);
+      for (const t of tiles) merged.add(t);
+      this.playerFog.set(client.sessionId, Array.from(merged));
     });
 
     this.onMessage("equip", (client, data: { slot: string; itemId: string }) => {

@@ -10,7 +10,7 @@ Encoder.BUFFER_SIZE = 256 * 1024;
 
 const PORT = Number(process.env.PORT ?? 2567);
 
-const transport = new WebSocketTransport();
+const transport = new WebSocketTransport({ maxPayload: 512 * 1024 }); // 512KB — allows large fog_update messages
 
 // Allow CORS for Colyseus HTTP matchmaking endpoints
 const app = transport.getExpressApp();

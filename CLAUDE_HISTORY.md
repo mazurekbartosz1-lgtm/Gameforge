@@ -682,6 +682,44 @@ Pamiętaj: dodać `SUPABASE_URL` i `SUPABASE_SERVICE_ROLE_KEY` do `server/.env` 
 
 ---
 
+## Session 22 — 2026-03-23 (Session 10)
+
+### What was done
+- **PLAN.md** — wyczyszczony i uaktualniony: W3/W4/W15–W19 oznaczone [x], wieczóry buildingowe przeniesione na koniec (W51-W55), dodane W20/W21/W22 (Supabase)
+- **Supabase integration** — zainstalowano `@supabase/supabase-js` na serwerze
+- **`server/src/db.ts`** (nowy plik):
+  - `supabaseAdmin` — service role client
+  - `loadPlayer(clerkId, nickname)` — SELECT/INSERT przy pierwszym logowaniu
+  - `savePlayer(player, fog[])` — UPDATE wszystkich statystyk + fog
+  - `loadWorldSeed()` / `saveWorldSeed(seed)` — persystentny seed mapy (tabela `world_config`)
+- **`server/src/GameRoom.ts`** zmiany:
+  - `onCreate` async — ładuje seed z DB; generuje i zapisuje jeśli brak
+  - `onJoin` async — stale session detection (F5 fix: kopiuje stan + fog do nowej sesji); fresh join ładuje z Supabase
+  - `onLeave` — `savePlayer(player, fog)` przed usunięciem; `playerFog.delete(sessionId)`
+  - `playerFog: Map<sessionId, string[]>` — fog per-gracz w pamięci serwera
+  - Auto-save co 30s (zamiast 60s)
+  - `request_players` handler — `spawn_at` tylko dla zalogowanych; `fog_load` wysyłany do klienta
+  - Nowy handler `fog_update` — merguje nowe kafle do `playerFog`
+- **`server/src/index.ts`** — `WebSocketTransport({ maxPayload: 512 * 1024 })` (było 4KB domyślnie → crashowało połączenia przy dużych fog_update)
+- **`src/app/game/scenes/PlayScene.ts`** — handler `fog_load` (odtwarza `discovered` Set); timer co 15s wysyła delta kafli przez `fog_update`
+- **Supabase SQL** — tabela `players` z kolumnami włącznie z `fog TEXT[]`; tabela `world_config`
+
+### Decisions made
+- Fog trzymany poza schematem Colyseus (byłby za duży do synchronizacji) — oddzielna mapa w GameRoom
+- `fog_update` wysyła tylko deltę (nowe kafle od ostatniego wysłania) — oszczędność przepustowości
+- Goście: brak persistencji (każda sesja świeża), `spawn_at` i `fog_load` pominięte
+- maxPayload = 512KB — wystarczy dla największych możliwych fog_update (tysięce kafli)
+
+### Problems encountered
+- `@colyseus/ws-transport` domyślny maxPayload = **4KB** — crashował połączenia gości gdy zalogowany gracz wysyłał fog_update >4KB. Fix: jawne ustawienie 512KB w `index.ts`
+- Kolumna `fog` w Supabase trzeba było dodać ręcznie: `ALTER TABLE players ADD COLUMN fog TEXT[] DEFAULT '{}'`
+- `spawn_at` był wysyłany do gości (przenoszył ich na pozycję zalogowanego gracza) — naprawiono: check `userId !== sessionId`
+
+### Next step
+Następna rzecz do zrobienia: dalsza rozbudowa gameplayu (zbieranie, crafting, budowanie) zgodnie z PLAN.md — sprawdź W23 (harvest) lub W24 (crafting).
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

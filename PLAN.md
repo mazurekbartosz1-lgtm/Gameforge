@@ -17,59 +17,13 @@ DONE — Next.js project bootstrapped, Pixel Crawler assets in `public/assets/`,
 
 ---
 
-### [~] Wieczór 3: Colyseus Hello World + Railway deploy
-*In progress — blocked by Railway outage.*
-
-```
-The Colyseus game server in server/ is ready to deploy to Railway but the deploy
-is blocked by a Railway outage. When Railway is back online:
-
-1. Go to railway.app, create a new project, and connect the GitHub repo
-   mazurekbartosz1-lgtm/Gameforge.
-2. Set the root directory to server/ in Railway project settings.
-3. Add environment variable: PORT=2567
-4. Railway will run: npm install && npm run build && node dist/index.js
-   (as configured in server/railway.json and server/Procfile).
-5. After deploy succeeds, copy the public Railway URL (e.g. https://gameforge-server-xxx.railway.app).
-6. In server/src/index.ts add a GET /health endpoint that returns { status: "ok", room: "game_room" }.
-   Use the WebSocketTransport's express option to register the route.
-7. Verify the health endpoint responds at https://<railway-url>/health.
-8. Update ARCHITECTURE.md — replace "Deployment target: Railway" with the actual Railway URL.
-
-Confirm when done and show me what was created.
-```
+### [x] Wieczór 3: Colyseus Hello World + Railway deploy
+DONE — Colyseus 0.17.x deployed on Railway at `gameforge-production-d7c8.up.railway.app` (port 8080). ESM migration required (`rou3` dependency is ESM-only — `"type":"module"` + `module: NodeNext` in server). Root Directory set to `server/` in Railway. `/health` endpoint added via Express middleware.
 
 ---
 
-### [ ] Wieczór 4: Phaser in Next.js + first Pixel Crawler sprite
-
-```
-Install Phaser 3 in the Next.js project (root package.json, not server/):
-  npm install phaser
-
-Then create src/app/game/page.tsx — a Next.js page that hosts a Phaser 3 game canvas.
-
-Requirements:
-- The page must dynamically import Phaser (Next.js SSR is incompatible with Phaser's
-  window references). Use:
-    const Phaser = await import('phaser')
-  inside a useEffect, or use next/dynamic with ssr: false on a GameCanvas component.
-- Create src/app/game/GameCanvas.tsx — a client component ('use client') that:
-  1. Mounts a Phaser.Game inside a useEffect on a <div ref={containerRef}>.
-  2. Destroys the game in the useEffect cleanup.
-  3. Configures the game: width 800, height 600, renderer Phaser.AUTO,
-     backgroundColor '#1a1a2e', parent the container div.
-- Create a Phaser Scene called BootScene in src/app/game/scenes/BootScene.ts:
-  1. In preload(), load the sprite sheet from:
-       public/assets/Pixel Crawler - Free Pack 2.0.4/Pixel Crawler - Free Pack 2.0.4/Characters/Body_A/Body_A.png
-     Use this.load.spritesheet('body_a', '/assets/Pixel Crawler - Free Pack 2.0.4/Pixel Crawler - Free Pack 2.0.4/Characters/Body_A/Body_A.png', { frameWidth: 16, frameHeight: 16 })
-  2. In create(), add the sprite to the center of the scene at scale 4 (so 16px → 64px).
-  3. Create an animation 'idle_down' using frames 0–3 at frameRate 8, repeat -1.
-  4. Play the animation on the sprite.
-- Navigate to /game in the browser to verify the sprite animates.
-
-Confirm when done and show me what was created.
-```
+### [x] Wieczór 4: Phaser in Next.js + first Pixel Crawler sprite
+DONE — Phaser 3.90.0 installed. `/game` page with `GameLoader.tsx` (ssr:false wrapper) + `PhaserGame.tsx` (useEffect init) + `GameScene.ts`. First Pixel Crawler sprite displayed (Fairy Forest tile 15 = solid grass). Key decisions: named ESM imports (`import { Scene, Game, AUTO } from "phaser"`), `Scale.FIT + CENTER_BOTH`, `pixelArt: true`, `audio: { noAudio: true }`.
 
 ---
 
@@ -397,82 +351,34 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 15: Camera following player + map bounds
-
-```
-Polish the camera behavior in src/app/game/scenes/PlayScene.ts.
-
-1. Camera follow with deadzone:
-   - this.cameras.main.startFollow(playerSprite, true, 0.1, 0.1)
-     (lerp values 0.1 give smooth following)
-   - Set a deadzone of 80x60 pixels so the camera only moves when the player
-     reaches the edge of the deadzone:
-       this.cameras.main.setDeadzone(80, 60)
-
-2. Camera bounds must match map size (already set in Wieczór 12 — verify it works
-   so the camera does not scroll beyond the map edge).
-
-3. Add a minimap:
-   - Create a second camera (this.cameras.add) at position x:10, y:10, width:150, height:150.
-   - Set its zoom to 0.15 (shows the whole 100x100 map at once).
-   - Set its background color to #111111.
-   - It should NOT follow the player — always show the full map.
-   - Draw a small red dot (Graphics object, depth 200) at the player's world position
-     to show location on the minimap. Update it in update().
-   - Ignore UI elements on the minimap camera by setting layer ignore lists.
-
-4. On mobile (detect via this.sys.game.device.os.android || .iOS):
-   - Add virtual joystick using a simple touch drag: track touchstart and touchmove,
-     compute direction vector, apply as movement input.
-
-Confirm when done and show me what was created.
-```
+### [x] Wieczór 15: Camera deadzone + lerp, minimap, fog of war fix
+DONE — `cameras.main.startFollow(followTarget, true, 0.08, 0.08)`, `setDeadzone(200, 140)`. Minimap: `minimapGfx: Graphics`, 160×120px, depth 25, top-right. VISION_RADIUS reduced 60→16 tiles (fog was never visible before — 60 tiles > half screen diagonal). Later migrated to HTML canvas in React sidebar (Session 9).
 
 ---
 
 ## TYDZIEŃ 4 — Auth and persistence
 
-### [ ] Wieczór 16: Clerk passwordless OTP setup in Next.js
-
-```
-Set up Clerk authentication with passwordless OTP (email code) in the Next.js app.
-
-1. Install Clerk:
-   npm install @clerk/nextjs
-
-2. Add environment variables to .env.local:
-   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=<your key from clerk.com dashboard>
-   CLERK_SECRET_KEY=<your secret key>
-   NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
-   NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
-   NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/game
-   NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/game
-
-3. Wrap the app in ClerkProvider in src/app/layout.tsx.
-
-4. Create src/middleware.ts using Clerk's clerkMiddleware():
-   - Public routes: '/', '/sign-in', '/sign-up', '/join/(.*)'
-   - All other routes require authentication.
-
-5. Create src/app/sign-in/[[...sign-in]]/page.tsx using <SignIn /> component.
-   Create src/app/sign-up/[[...sign-up]]/page.tsx using <SignUp /> component.
-
-6. In Clerk dashboard:
-   - Disable all social login providers.
-   - Enable "Email OTP" (one-time passcode) as the only sign-in method.
-   - Set OTP expiry to 10 minutes.
-
-7. Update the home page (src/app/page.tsx) to show:
-   - If signed in: a "Play" button linking to /game and a "Sign out" button.
-   - If signed out: a "Sign in" button linking to /sign-in.
-   Use Clerk's useUser() and SignOutButton components.
-
-Confirm when done and show me what was created.
-```
+### [x] Wieczór 16: Clerk auth setup in Next.js
+DONE — `@clerk/nextjs` installed, `ClerkProvider` in `layout.tsx`. `AuthButton.tsx` (useClerk openSignIn/signOut). `HomeAuth.tsx`: LoggedIn (avatar, name, email, session time) + LoggedOut (SignIn form). `page.tsx` simplified to `<HomeAuth />`. Clerk dashboard: email OTP only, phone numbers disabled (Polish numbers unsupported). Clerk SignIn overflow fixed with `appearance.elements` API (rootBox/card/cardBox width 100%).
 
 ---
 
-### [ ] Wieczór 17: Supabase tables setup
+### [x] Wieczór 17: Enemy system — Hunter AI + zone spawning
+DONE — `EnemyState` schema: id, type, x/y, hp/maxHp, isAlive, animKey. Hunter: 6 sprites (idle/walk/pierce × down/side/up), `HUNTER_ANIM_MAP`, pierce loops `repeat: -1`. Zone-based spawning: world in 256px zones, `enter_chunk` triggers `activateZone(zx, zy)` for radius-2 neighbourhood, up to 8 spawn attempts. Single `setSimulationInterval → masterTick(dt)` at 100ms (Colyseus keeps only last registration). `tickEnemyAI` at 1000ms: chase (`ENEMY_CHASE_RANGE=500px`), attack (`ENEMY_STOP_DIST=54px`), wander. Server map collision ported from MapGenerator. `attack_enemy` handler (64px range). `player_damage` targeted message. `MAX_ALIVE_ENEMIES=40`.
+
+---
+
+### [x] Wieczór 18: Player HUD sidebar, /status page, sanity overhaul
+DONE — Layout: flex row (canvas flex:1 + sidebar 216px). `PlayerPanel.tsx` pełny redesign wg Stitch concept: OPERATOR header, DAY N ☀/NIGHT N 🌙 counter (client-side), TACTICAL_MAP section z `<canvas id="minimap-canvas">` + X/Y position. Kafelki COMBAT/OBRONA, sloty ekwipunku jako symbole tekstowe, QUEST_OBJ ★★☆. `/status` strona polling `/health` co 2s (status serwisów, liczba pokoi/graczy). Sanity mechanics: passive regen +0.3/tick, kill −20, harvest +2. `effectiveAttack` = floor(baseAttack/2) przy sanity≤0 (serwer-side). `sendStatsToPlayers` wysyła stats co tick.
+
+---
+
+### [x] Wieczór 19: HUD redesign (Stitch concept) + minimap na HTML canvas
+DONE — Stitch projekt "Gameforge — Neon Quest UI" (ID: 11496012017862414056). `minimapGfx` usunięty z Phaser; minimap renderowany na `<canvas id="minimap-canvas">` w React sidebar. `drawMinimap()`: ImageData + putImageData (1 GPU upload vs ~19K fillRect/frame). Mgła: single-pass dim-factor 0.35. Emituje event `gamePosition: {x, y}`. `STITCH_BRIEF.md` — design brief dla 8 ekranów.
+
+---
+
+### [ ] Wieczór 20: Supabase tables setup ⭐ NASTĘPNE
 
 ```
 Set up Supabase database schema for Gameforge.
@@ -578,40 +484,12 @@ Confirm when done and show me the table list.
 
 ---
 
-### [ ] Wieczór 18: Pass Clerk JWT token to Colyseus
-
-```
-Pass the Clerk JWT token from the Next.js frontend to the Colyseus server so the
-server can identify authenticated players.
-
-CLIENT (src/app/game/network/ColyseusClient.ts):
-1. Import useAuth from @clerk/nextjs.
-2. Before joining the room, get the JWT token:
-     const { getToken } = useAuth()
-     const token = await getToken()
-3. Pass the token in the room join options:
-     room = await client.joinOrCreate('game_room', { token, nickname })
-
-SERVER (server/src/GameRoom.ts):
-1. Install the Clerk SDK in server/:
-     cd server && npm install @clerk/backend
-2. In onJoin(), extract and verify the token:
-     import { createClerkClient } from '@clerk/backend'
-     const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY })
-     const payload = await clerk.verifyToken(options.token)
-     const clerkId = payload.sub
-3. Set player.userId = clerkId on the PlayerState.
-4. If token is missing or invalid: kick the client with client.leave(4001).
-5. Add CLERK_SECRET_KEY to server/.env.example.
-
-Add server/.env to .gitignore if not already present (it is — verify).
-
-Confirm when done and show me what was created.
-```
+### [x] Wieczór 20b: Clerk JWT weryfikacja po stronie Colyseus (zrobiona wcześniej)
+DONE — `@clerk/backend` zainstalowany w server/. `onJoin` async, `verifyToken(token, { secretKey, jwtKey })`. Valid → `player.userId = payload.sub`. Invalid → `client.leave(4001)`. No token → guest fallback (`userId = sessionId`). `dotenv/config` import w `index.ts` (był brakujący — CLERK_SECRET_KEY był undefined).
 
 ---
 
-### [ ] Wieczór 19: Load player state on join from Supabase
+### [ ] Wieczór 21: Load player state on join from Supabase
 
 ```
 When a player joins the Colyseus room, load their saved state from Supabase
@@ -640,7 +518,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 20: Save player state on leave + auto-save every 60s
+### [ ] Wieczór 22: Save player state on leave + auto-save every 60s
 
 ```
 Persist player state to Supabase when they leave the room and every 60 seconds.
@@ -673,7 +551,7 @@ Confirm when done and show me what was created.
 
 ## TYDZIEŃ 5 — Resources, inventory, food, enemies
 
-### [ ] Wieczór 21: Harvest system
+### [~] Wieczór 23: Harvest system (częściowo zrobiony)
 
 ```
 Implement the harvest system — players can collect resources by interacting with
@@ -716,7 +594,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 22: Food items config
+### [ ] Wieczór 24: Food items config
 
 ```
 Create a food item configuration system.
@@ -773,7 +651,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 23: Inventory UI 4×5 grid + eat action
+### [ ] Wieczór 25: Inventory UI 4×5 grid + eat action
 
 ```
 Create an inventory UI in the Phaser game.
@@ -801,7 +679,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 24: Enemy drop system + equippable items
+### [ ] Wieczór 26: Enemy drop system + equippable items
 
 ```
 Implement enemy item drops including equippable gear that modifies player stats.
@@ -881,7 +759,12 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 25: Survival mechanics HUD
+### [x] Wieczór 27: Survival mechanics HUD
+DONE (inaczej niż planowano) — HP/Hunger/Sanity bars + Atak/Obrona zrobione w `PlayerPanel.tsx` (React sidebar, nie Phaser UIScene). DAY/NIGHT indicator client-side. Stats update via `stats_update` Colyseus event. Atak czerwony + "↓ obniżony" przy sanity≤0.
+
+```
+ORIGINAL PROMPT (nieaktualne — HUD zrobiony w React sidebarze):
+```
 
 ```
 Create the HUD overlay in src/app/game/ui/HUD.ts.
@@ -914,6 +797,10 @@ Launch it from PlayScene.create() with this.scene.launch('UIScene', { room }).
 
 Confirm when done and show me what was created.
 ```
+
+---
+
+*Wieczóry 28–30 (Building & cooking) przeniesione do Tygodnia 10 (W51–W55) zgodnie z priorytetami.*
 
 ---
 
@@ -1744,7 +1631,7 @@ Confirm when done and show me the list of bugs found and fixed.
 
 ## TYDZIEŃ 10 — Building and cooking
 
-### [ ] Wieczór 26: BuildingConfig + build mode
+### [ ] Wieczór 51: BuildingConfig + build mode
 
 ```
 Implement building placement with a green/red preview system.
@@ -1790,7 +1677,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 27: Buildings in world with collisions and HP
+### [ ] Wieczór 52: Buildings in world with collisions and HP
 
 ```
 Render buildings from Colyseus WorldState and add physics collisions.
@@ -1823,7 +1710,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 28: Bonfire — basic cooking
+### [ ] Wieczór 53: Bonfire — basic cooking
 
 ```
 Implement the Bonfire cooking station (no recipe system — just convert raw food to cooked).
@@ -1852,13 +1739,13 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 29: ~~Crafting~~ — USUNIĘTY (na razie)
+### [ ] Wieczór 54: ~~Crafting~~ — USUNIĘTY (na razie)
 
 *Krafting (Workbench, Anvil, receptury craftingu) usunięty z planu na ten etap.*
 
 ---
 
-### [ ] Wieczór 30: Save buildings to Supabase + load on room create
+### [ ] Wieczór 55: Save buildings to Supabase + load on room create
 
 ```
 Persist buildings to Supabase and reload them when a Colyseus room is created.

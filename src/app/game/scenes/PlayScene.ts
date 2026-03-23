@@ -397,7 +397,37 @@ export class PlayScene extends Scene {
       this.playerCount = 1 + players.length;
       this.playersOnlineText.setText(`Players online: ${this.playerCount}`);
     });
+
+    room.onMessage("spawn_at", (data: { x: number; y: number }) => {
+      this.px = data.x;
+      this.py = data.y;
+      this.sprites.forEach((s) => { s.x = this.px; s.y = this.py; });
+      this.toolSprites.forEach((s) => { s.x = this.px; s.y = this.py; });
+      this.followTarget.setPosition(this.px, this.py);
+    });
+
+    room.onMessage("fog_load", (tiles: string[]) => {
+      if (Array.isArray(tiles)) {
+        tiles.forEach((t) => this.discovered.add(t));
+      }
+    });
+
     room.send("request_players", {});
+
+    // Send newly discovered fog tiles to server every 15 seconds
+    let lastFogSnapshot = new Set<string>();
+    this.time.addEvent({
+      delay: 15_000,
+      loop: true,
+      callback: () => {
+        const newTiles: string[] = [];
+        this.discovered.forEach((t) => { if (!lastFogSnapshot.has(t)) newTiles.push(t); });
+        if (newTiles.length > 0) {
+          room.send("fog_update", newTiles);
+          newTiles.forEach((t) => lastFogSnapshot.add(t));
+        }
+      },
+    });
 
     room.onMessage("player_add", (p: { sessionId: string; x: number; y: number; animKey: string; nickname: string }) => {
       this.addRemotePlayer(p.sessionId, p);

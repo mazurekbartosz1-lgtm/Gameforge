@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-23 (Session 9, UI redesign — Stitch concept implemented)
+2026-03-23 (Session 10, Supabase player persistence + fog of war persistence)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -28,6 +28,7 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ Wieczór 18: Clerk auth — JWT token z frontendu do Colyseus, weryfikacja na serwerze, guest fallback
 - ✅ Wieczór 19: Player HUD sidebar, strona /status, HomeAuth, statystyki bojowe (atak/obrona), nowa mechanika sanity
 - ✅ UI redesign (Session 9): HUD przebudowany wg Stitch concept — OPERATOR header, TACTICAL_MAP, minimap na HTML canvas, QUEST_OBJ, fix Clerk overflow
+- ✅ Wieczór 20–22 (Session 10): Supabase player persistence — load on join, save on leave + auto-save co 30s, fog of war persistence per-player
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
@@ -82,6 +83,45 @@ Gameforge/
 | Dev server | ts-node + nodemon |
 | Deployment target | Railway — `gameforge-production-d7c8.up.railway.app` |
 | WebSocket URL | `wss://gameforge-production-d7c8.up.railway.app` |
+
+## Wieczór 20–22 additions (Session 10)
+
+### Supabase player persistence (`server/src/db.ts`)
+- `loadPlayer(clerkId, nickname)` — SELECT by `clerk_id`; INSERT nowego gracza (x=0, y=0) przy pierwszym logowaniu
+- `savePlayer(player, fog[])` — UPDATE pozycji, HP, głód, sanity, atak, obrona, ekwipunek, fog; tylko dla zalogowanych (`userId !== sessionId`)
+- `loadWorldSeed()` / `saveWorldSeed(seed)` — UPSERT `world_config { key: 'map_seed' }` — seed wspólny dla wszystkich graczy, persystentny między restartami
+- `supabaseAdmin` — `@supabase/supabase-js` service role client (`SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`)
+
+### Supabase tables
+- `players` — `id, clerk_id, nickname, x, y, hp, max_hp, hunger, sanity, attack, defense, inventory TEXT[], equipment JSONB, active_slot, fog TEXT[], updated_at`
+- `world_config` — `key TEXT PRIMARY KEY, value TEXT` (trzyma `map_seed`)
+
+### Session deduplication (F5 fix)
+- `onJoin` sprawdza czy `userId` już istnieje w pokoju (stale session) — jeśli tak, kopiuje stan do nowej sesji i usuwa starą; broadcast `player_remove` dla starego sessionId
+
+### Fog of war persistence
+- `playerFog: Map<sessionId, string[]>` w GameRoom — trzyma "tx,ty" kafle per gracz w pamięci
+- Przy fresh join: ładuje `saved.fog` z Supabase do `playerFog`
+- `request_players` → serwer wysyła `fog_load` (zapisane kafle) do klienta; klient odtwarza `discovered` Set
+- Klient wysyła `fog_update` (delta nowych kafli) co 15 sekund; serwer merguje do `playerFog`
+- `savePlayer` zapisuje `fog[]` do Supabase co 30s (auto-save) i przy `onLeave`
+
+### Gość vs. zalogowany
+- `spawn_at` wysyłany tylko zalogowanym (goście zawsze startują na x=0, y=0)
+- `fog_load` wysyła `[]` dla gości (każda sesja świeża)
+- `fog_update` od gości ignorowany (brak wpisu w `playerFog`)
+
+### WebSocket maxPayload fix
+- Domyślny maxPayload `@colyseus/ws-transport` = **4KB** — za mały dla fog_update
+- Ustawiono `WebSocketTransport({ maxPayload: 512 * 1024 })` — 512KB
+
+### Environment variables added (Session 10)
+| Variable | Where |
+|----------|-------|
+| `SUPABASE_URL` | `server/.env`, Railway |
+| `SUPABASE_SERVICE_ROLE_KEY` | `server/.env`, Railway |
+
+---
 
 ## Game server schemas (GameRoom.ts)
 - `PlayerState` — sessionId, userId, nickname, x/y, hp, maxHp, hunger, sanity, attack (base 5), defense (base 2), inventory, equipment, activeSlot, direction, animKey, isOnline
