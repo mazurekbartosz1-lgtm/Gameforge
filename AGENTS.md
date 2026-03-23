@@ -9,4 +9,4 @@ This version has breaking changes — APIs, conventions, and file structure may 
 1. **Plan first** — before writing any code, lay out a numbered plan: what files change, what each step does, and why. Wait for explicit approval before proceeding.
 2. **Execute after approval** — implement exactly what was approved. Flag any surprises during implementation.
 3. **Test gate** — when implementation is complete, stop and ask the user to test in the browser before committing.
-4. **Commit & push only after green light** — update ARCHITECTURE.md, then commit and push.
+4. **Commit & push only after green light** — update ARCHITECTURE.md **and** CLAUDE_HISTORY.md (new session entry: what was done, decisions made, problems encountered, exact next step), then commit and push.

@@ -491,6 +491,94 @@ Paste `SESSION_START_PROMPT.md` first, then use the Wieczór 6 prompt from `PLAN
 
 ---
 
+## Session 16 — 2026-03-21 (Session 4, continued)
+
+### What was done
+- **Wieczór 15 COMPLETE ✅** — inventory system, harvest fixes, resource polish
+- Added Inventory HUD (`initInventoryHud()`) — Wood/Stone labels at bottom-center, `scrollFactor 0`, depth 20
+- `addItems(drops)` — updates counts + shows floating pickup text (yellow tween up 40px, fade 1400ms)
+- `harvest_reward` message from server triggers `addItems`; offline fallback gives items locally
+- Rewrote `findAdjacentResource` to pixel-based directional rectangle (REACH=48px, WIDE=24px) — fixes up/down harvest not working
+- Dead resource sprites now **destroyed** via `killResourceSprite(id)` instead of `setVisible(false)` — eliminates stale artifacts
+- `tileToResource: Map<string,string>` replaced with `tileToResources: Map<string,Set<string>>` — overlapping trees keep full footprints
+- `TREE_STEP` 7→10, `TREE_MAX_OFFSET` 1→3, tree depth 2→3
+- `ROCK_DENSITY` 0.75→0.375 (half as many rocks), rocks never respawn
+- `/objects` page: enemy grouping by character name, auto frame size for `-sheet` files, 4-direction preview
+
+### Decisions made
+- Full 7×10 tree footprint kept (user previously rejected trunk-only approach)
+- Trees permanent (no respawn), rocks permanent (no respawn) — consistent with Don't Starve feel
+- Floating pickup text preferred over static counter increment
+
+### Problems encountered
+- Up/down harvest was broken because `PLAYER_HH=20px > 1 tile` — ±1 tile check was too short. Fixed by switching to pixel-based directional AABB
+
+### Next step
+**Wieczór 16** — camera deadzone + lerp, minimap with fog of war
+
+---
+
+## Session 17 — 2026-03-21 (Session 4, continued)
+
+### What was done
+- **Wieczór 16 COMPLETE ✅** — camera deadzone, minimap, fog of war fix
+- Camera: `startFollow(followTarget, true, 0.08, 0.08)` — smooth lerp follow
+- `setDeadzone(200, 140)` — player moves freely in center without moving camera
+- Minimap: `minimapGfx: Graphics`, scrollFactor 0, depth 25, top-right corner `(632, 8)`, 160×120px
+  - `MINIMAP_SCALE = 4` — 1 px minimap = 4 world tiles
+  - Pass 1: terrain (grass `#2a4a2a`, forest `#1a6a1a`) for discovered tiles
+  - Pass 2: black 65% overlay for discovered-but-fogged tiles
+  - Dots: trees (green), rocks (grey), other players (blue), self (white 3×3)
+- `VISION_RADIUS` reduced 60→16 tiles — fog of war now actually visible on 800×600 screen
+- Added `AGENTS.md` with mandatory session workflow rules
+
+### Decisions made
+- `VISION_RADIUS=60` was larger than half the screen diagonal — fog was never visible. 16 tiles (256px) is correct for 800×600
+- Minimap redrawn every frame alongside fog (same tile loop, negligible overhead)
+
+### Problems encountered
+- Fog was invisible for entire project until this session — root cause was `VISION_RADIUS=60` tiles >> screen size
+
+### Next step
+**Wieczór 17** — enemy system (Hunter AI, zone spawning, combat)
+
+---
+
+## Session 18 — 2026-03-21 (Session 5)
+
+### What was done
+- **Wieczór 17 COMPLETE ✅** — full enemy system with Hunter AI, zone spawning, and player combat
+- `EnemyState` schema: id, type, x/y, hp/maxHp, isAlive, animKey
+- Hunter: 6 sprites per enemy (idle/walk/pierce × down/side/up), visibility toggled via `HUNTER_ANIM_MAP`, pierce loops `repeat: -1`
+- Zone-based dynamic spawning: world divided into 256px zones, `enter_chunk` message triggers `activateZone(zx, zy)` for radius-2 neighbourhood; up to 8 spawn attempts per zone, skips positions blocked by trees/rocks
+- `MAX_ALIVE_ENEMIES = 40`, `ENEMY_SPAWN_RADIUS = 2` enemies per zone
+- Single `setSimulationInterval` → `masterTick(dt)` at 100ms (`gameTickAccum` accumulator fires full AI every 1000ms)
+- `tickEnemyMovement()` at 100ms: applies velocity, blocks on map objects
+- `tickEnemyAI()` at 1000ms: chase (`ENEMY_CHASE_RANGE=500px`), stop+attack (`ENEMY_STOP_DIST=54px`), wander
+- `separateEnemies()` at 100ms: enemy-enemy separation only (player push removed)
+- Server map collision ported from `MapGenerator.ts`: `mapHash / mapIsForestTile / mapTreeAtChunk / mapRockAtChunk`, `mapTileBlockedCache` per-tile cache (invalidated on rock harvest)
+- `attack_enemy` message: validates dist < `ENEMY_ATTACK_RANGE=64px`, deals 10 damage, broadcasts kill
+- `player_damage` targeted message sent to client when enemy reaches player
+- Client SPACE attack: 64px in facing direction; client collision: circular check 28px radius
+- Debug overlays: magenta rectangles (enemy collision boxes), bordeaux circles (attack range 64px), red circle (player damage range 54px)
+- Pierce animation only triggers when enemy stops due to player proximity (not trees/rocks)
+
+### Decisions made
+- Single `setSimulationInterval` mandatory — Colyseus only keeps the last registered callback
+- Enemy-player push (separation) removed from server — felt bad; client does 1-way block only
+- Pierce anim only on player contact, not on map collision (cleaner UX)
+- `mapTileBlockedCache` per-tile to avoid repeated hash computation at 100ms tick rate
+
+### Problems encountered
+- Colyseus drops all but last `setSimulationInterval` registration — had to merge all tick logic into `masterTick`
+- Enemy stuck on map objects when pushing into corners — fixed by full AABB map collision check same as player
+
+### Next step
+**Wieczór 18** — Pass Clerk JWT token from frontend to Colyseus server for authenticated player identity.
+Prompt is in PLAN.md under "Wieczór 18".
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

@@ -9,7 +9,108 @@
       "Bash(git remote:*)",
       "Bash(git branch:*)",
       "Bash(git push:*)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(py --version)",
+      "Bash(python -c \":*)",
+      "Read(//tmp/**)",
+      "Bash(python -c \"import json; d=json.load\\(open\\(''/tmp/png_data.json''\\)\\); print\\(len\\(d\\), ''files''\\); print\\(d[0]\\)\")",
+      "Bash(python:*)",
+      "Bash(python3 generate_assets_map.py)",
+      "Bash(ls /c/Python*)",
+      "Read(//c/Users/Julia/AppData/Local/Programs/**)",
+      "Bash(/c/Users/Julia/AppData/Local/Microsoft/WindowsApps/python3 --version 2>&1)",
+      "Read(//c/ProgramData/chocolatey/bin//**)",
+      "Bash(cmd.exe /c \"where python\")",
+      "Bash(cmd.exe /c \"py -3 --version\")",
+      "Bash(/c/ProgramData/chocolatey/bin/python3.14.exe --version 2>&1)",
+      "Bash(/c/ProgramData/chocolatey/bin/python3.14.exe -c \"from PIL import Image; print\\('PIL OK'\\)\" 2>&1)",
+      "Bash(/c/ProgramData/chocolatey/bin/python3.14.exe generate_assets_map.py)",
+      "Bash(mkdir /c/Projekty/Gameforge/server)",
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(grep -v \"^//\")",
+      "Bash(kill %1 2)",
+      "Bash(/dev/null netstat:*)",
+      "Bash(git rm:*)",
+      "Bash(ls:*)",
+      "Bash(git restore:*)",
+      "Bash(rm:*)",
+      "Bash(curl:*)",
+      "Bash(npm start:*)",
+      "Bash(node:*)",
+      "Bash(mkdir -p \"C:/Projekty/Gameforge/public/assets/player\")",
+      "Bash(cp \"C:/Projekty/Gameforge/public/assets/Pixel Crawler - Free Pack 2.0.4/Pixel Crawler - Free Pack/Entities/Characters/Body_A/Animations/Idle_Base/Idle_Down-Sheet.png\" \"C:/Projekty/Gameforge/public/assets/player/idle_down.png\")",
+      "Bash(cp \"C:/Projekty/Gameforge/public/assets/Pixel Crawler - Free Pack 2.0.4/Pixel Crawler - Free Pack/Entities/Characters/Body_A/Animations/Idle_Base/Idle_Up-Sheet.png\" \"C:/Projekty/Gameforge/public/assets/player/idle_up.png\")",
+      "Bash(cp \"C:/Projekty/Gameforge/public/assets/Pixel Crawler - Free Pack 2.0.4/Pixel Crawler - Free Pack/Entities/Characters/Body_A/Animations/Idle_Base/Idle_Side-Sheet.png\" \"C:/Projekty/Gameforge/public/assets/player/idle_side.png\")",
+      "Bash(cp \"C:/Projekty/Gameforge/public/assets/Pixel Crawler - Free Pack 2.0.4/Pixel Crawler - Free Pack/Entities/Characters/Body_A/Animations/Walk_Base/Walk_Down-Sheet.png\" \"C:/Projekty/Gameforge/public/assets/player/walk_down.png\")",
+      "Bash(npm view:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(\"C:/Projekty/Gameforge/.env.local\")",
+      "Bash(grep -r \"onAdd\\\\|onChange\\\\|onRemove\" C:/Projekty/Gameforge/node_modules/colyseus.js/dist --include=*.js -l)",
+      "Bash(netstat -ano)",
+      "Bash(findstr :2567)",
+      "Bash(findstr LISTENING)",
+      "Bash(taskkill /PID 17824 /F)",
+      "Bash(taskkill /PID 3092 /F)",
+      "Bash(cmd //c \"taskkill /PID 17824 /F & taskkill /PID 3092 /F\")",
+      "Bash(python3 -c \":*)",
+      "Bash(git -C /c/Projekty/Gameforge add server/src/index.ts server/package.json server/package-lock.json src/app/game/scenes/PlayScene.ts CLAUDE_HISTORY.md PLAN.md)",
+      "Bash(git -C /c/Projekty/Gameforge status)",
+      "Bash(git -C:*)",
+      "Bash(powershell -Command \"\n\\\\$files = @\\(\n  'C:\\\\\\\\Projekty\\\\\\\\Gameforge\\\\\\\\public\\\\\\\\assets\\\\\\\\Pixel Crawler - Fairy Forest 1.7\\\\\\\\Pixel Crawler - Fairy Forest 1.7\\\\\\\\Assets\\\\\\\\Tiles.png',\n  'C:\\\\\\\\Projekty\\\\\\\\Gameforge\\\\\\\\public\\\\\\\\assets\\\\\\\\Pixel Crawler - Fairy Forest 1.7\\\\\\\\Pixel Crawler - Fairy Forest 1.7\\\\\\\\Assets\\\\\\\\Props.png',\n  'C:\\\\\\\\Projekty\\\\\\\\Gameforge\\\\\\\\public\\\\\\\\assets\\\\\\\\Pixel Crawler - Fairy Forest 1.7\\\\\\\\Pixel Crawler - Fairy Forest 1.7\\\\\\\\Assets\\\\\\\\Tree.png'\n\\)\nforeach \\(\\\\$f in \\\\$files\\) {\n  \\\\$bytes = [System.IO.File]::ReadAllBytes\\(\\\\$f\\)\n  \\\\$w = [BitConverter]::ToUInt32\\([byte[]]@\\(\\\\$bytes[19],\\\\$bytes[18],\\\\$bytes[17],\\\\$bytes[16]\\),0\\)\n  \\\\$h = [BitConverter]::ToUInt32\\([byte[]]@\\(\\\\$bytes[23],\\\\$bytes[22],\\\\$bytes[21],\\\\$bytes[20]\\),0\\)\n  Write-Host \\([System.IO.Path]::GetFileName\\(\\\\$f\\)\\) \\\\$w'x'\\\\$h 'cols:' \\([Math]::Floor\\(\\\\$w/16\\)\\) 'rows:' \\([Math]::Floor\\(\\\\$h/16\\)\\)\n}\n\")",
+      "Bash(powershell -Command \"\n\\\\$files = @\\(\n  'C:\\\\\\\\Projekty\\\\\\\\Gameforge\\\\\\\\public\\\\\\\\assets\\\\\\\\Pixel Crawler - Fairy Forest 1.7\\\\\\\\Pixel Crawler - Fairy Forest 1.7\\\\\\\\Assets\\\\\\\\Tree.png',\n  'C:\\\\\\\\Projekty\\\\\\\\Gameforge\\\\\\\\public\\\\\\\\assets\\\\\\\\Pixel Crawler - Fairy Forest 1.7\\\\\\\\Pixel Crawler - Fairy Forest 1.7\\\\\\\\Assets\\\\\\\\Props.png'\n\\)\nforeach \\(\\\\$f in \\\\$files\\) {\n  \\\\$bytes = [System.IO.File]::ReadAllBytes\\(\\\\$f\\)\n  \\\\$w = [BitConverter]::ToUInt32\\([byte[]]@\\(\\\\$bytes[19],\\\\$bytes[18],\\\\$bytes[17],\\\\$bytes[16]\\),0\\)\n  \\\\$h = [BitConverter]::ToUInt32\\([byte[]]@\\(\\\\$bytes[23],\\\\$bytes[22],\\\\$bytes[21],\\\\$bytes[20]\\),0\\)\n  Write-Host \\([System.IO.Path]::GetFileName\\(\\\\$f\\)\\) \\\\$w'x'\\\\$h 'cols:' \\([Math]::Floor\\(\\\\$w/16\\)\\) 'rows:' \\([Math]::Floor\\(\\\\$h/16\\)\\)\n}\n\")",
+      "Bash(powershell -Command \"\n\\\\$base = 'C:\\\\\\\\Projekty\\\\\\\\Gameforge\\\\\\\\public\\\\\\\\assets\\\\\\\\Pixel Crawler - Free Pack 2.0.4\\\\\\\\Pixel Crawler - Free Pack\\\\\\\\Environment\\\\\\\\Props\\\\\\\\Static'\n\\\\$files = @\\(\n  \\\\\"\\\\$base\\\\\\\\Trees\\\\\\\\Model_01\\\\\\\\Size_02.png\\\\\",\n  \\\\\"\\\\$base\\\\\\\\Trees\\\\\\\\Model_01\\\\\\\\Size_03.png\\\\\",\n  \\\\\"\\\\$base\\\\\\\\Trees\\\\\\\\Model_02\\\\\\\\Size_02.png\\\\\",\n  \\\\\"\\\\$base\\\\\\\\Rocks.png\\\\\",\n  \\\\\"\\\\$base\\\\\\\\Resources.png\\\\\"\n\\)\nforeach \\(\\\\$f in \\\\$files\\) {\n  if \\(Test-Path \\\\$f\\) {\n    \\\\$bytes = [System.IO.File]::ReadAllBytes\\(\\\\$f\\)\n    \\\\$w = [BitConverter]::ToUInt32\\([byte[]]@\\(\\\\$bytes[19],\\\\$bytes[18],\\\\$bytes[17],\\\\$bytes[16]\\),0\\)\n    \\\\$h = [BitConverter]::ToUInt32\\([byte[]]@\\(\\\\$bytes[23],\\\\$bytes[22],\\\\$bytes[21],\\\\$bytes[20]\\),0\\)\n    Write-Host \\([System.IO.Path]::GetFileName\\(\\\\$f\\)\\) \\\\$w'x'\\\\$h\n  } else { Write-Host \\([System.IO.Path]::GetFileName\\(\\\\$f\\)\\) 'NOT FOUND' }\n}\n\")",
+      "Bash(python3:*)",
+      "Bash(taskkill /PID 19392 /F)",
+      "Bash(taskkill /PID 4424 /F)",
+      "Bash(taskkill /PID 7220 /F)",
+      "Bash(cmd //c \"taskkill /PID 19392 /F & taskkill /PID 4424 /F & taskkill /PID 7220 /F\")",
+      "Bash(find /c/Projekty/Gameforge/public/assets -type f -name *.png)",
+      "Bash(find /c/Projekty/Gameforge/public -name *hunter* -o -name *Hunter* -o -name *pierce* -o -name *Pierce*)",
+      "Bash(find /c/Projekty/Gameforge -path */Cemetery* -name *.png)",
+      "Bash(PIERCE_DIR=\"/c/Projekty/Gameforge/public/assets/Pixel Crawler - Cemetery 0.4/Pixel Crawler - Cemetery/Entities/Characters/A_Hunter/Attack_02_Base\")",
+      "Bash(SRC=\"/c/Projekty/Gameforge/public/assets/Pixel Crawler - Cemetery 0.4/Pixel Crawler - Cemetery/Entities/Characters/A_Hunter/Attack_02_Base\")",
+      "Bash(DST=\"/c/Projekty/Gameforge/public/assets/enemy/hunter\")",
+      "Bash(cp \"$SRC/Pierce_Down-Sheet.png\" \"$DST/hunter_pierce_down.png\")",
+      "Bash(cp \"$SRC/Pierce_Side-Sheet.png\" \"$DST/hunter_pierce_side.png\")",
+      "Bash(cp \"$SRC/Pierce_Top-Sheet.png\" \"$DST/hunter_pierce_up.png\")",
+      "Skill(update-config)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"$(date +%s)\" > \"/tmp/claude_ctx_timer.txt\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command // \"\"' | grep -q 'git commit' && printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[AUTO-COMMIT] Commit wykryty. Sprawdz i podaj status okna kontekstu: szacunkowy procent uzycia oraz czy zalecasz rozpoczecie nowej sesji. Jesli tak (>70%): upewnij sie ze ARCHITECTURE.md i CLAUDE_HISTORY.md sa aktualne, zaproponuj git push i nowa sesje przez SESSION_START_PROMPT.md.\"}}' || echo '{}'",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TIMER_FILE=\"/tmp/claude_ctx_timer.txt\"; NOW=$(date +%s); [ ! -f \"$TIMER_FILE\" ] && echo \"$NOW\" > \"$TIMER_FILE\"; LAST=$(cat \"$TIMER_FILE\"); DIFF=$((NOW - LAST)); if [ \"$DIFF\" -ge 1800 ]; then echo \"$NOW\" > \"$TIMER_FILE\"; printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"UserPromptSubmit\",\"additionalContext\":\"[AUTO-30MIN] Minelo 30 minut od ostatniego sprawdzenia. Sprawdz i podaj status okna kontekstu: szacunkowy procent uzycia oraz czy zalecasz nowa sesje. Jesli tak (>70%): upewnij sie ze ARCHITECTURE.md i CLAUDE_HISTORY.md sa aktualne, zaproponuj git push i nowa sesje przez SESSION_START_PROMPT.md.\"}}'; else echo '{}'; fi",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }
