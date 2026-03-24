@@ -679,7 +679,8 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 26: Enemy drop system + equippable items
+### [x] Wieczór 26: Enemy drop system + equippable items
+DONE (Session 14) — lootConfig.ts (7 gear items, weighted pool bez raw_meat, 30% no-drop), equip_item/unequip_item/destroy_item handlers, recalcStats, inventory_load sync, side info modal z porównaniem statystyk, PlayerPanel equipment slots z bonusami.
 
 ```
 Implement enemy item drops including equippable gear that modifies player stats.
