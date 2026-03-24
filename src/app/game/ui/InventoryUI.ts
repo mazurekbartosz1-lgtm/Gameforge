@@ -164,6 +164,7 @@ export class InventoryUI {
   // Keys
   private keyI!:   Phaser.Input.Keyboard.Key;
   private keyE!:   Phaser.Input.Keyboard.Key;
+  private keyEsc!: Phaser.Input.Keyboard.Key;
   private keys18!: Phaser.Input.Keyboard.Key[];
 
   constructor(scene: Phaser.Scene, inventory: Map<string, number>, room: Room | null) {
@@ -210,6 +211,11 @@ export class InventoryUI {
   handleInput(): boolean {
     if (Phaser.Input.Keyboard.JustDown(this.keyI)) {
       this.togglePanel();
+    }
+
+    if (this.panelOpen && Phaser.Input.Keyboard.JustDown(this.keyEsc)) {
+      this.togglePanel();
+      return false;
     }
 
     for (let i = 0; i < this.keys18.length; i++) {
@@ -320,13 +326,17 @@ export class InventoryUI {
       .setOrigin(0.5).setScrollFactor(0).setDepth(depth + 2);
 
     this.dropBg = this.scene.add
-      .rectangle(btnX2, btnY, btnW, ACTION_H, 0x101a2a, 1)
+      .rectangle(btnX2, btnY, btnW, ACTION_H, 0x0a1a2e, 1)
       .setOrigin(0, 0).setScrollFactor(0).setDepth(depth + 1)
-      .setStrokeStyle(1, 0x223344);
+      .setStrokeStyle(1, 0x224466)
+      .setInteractive({ useHandCursor: true });
+    this.dropBg.on("pointerdown", () => this.onDropClick());
+    this.dropBg.on("pointerover",  () => this.dropBg.setFillStyle(0x152a42));
+    this.dropBg.on("pointerout",   () => this.dropBg.setFillStyle(0x0a1a2e));
 
     this.dropLabel = this.scene.add
       .text(btnX2 + btnW / 2, btnY + ACTION_H / 2, "📦 WYRZUĆ", {
-        fontSize: "10px", color: "#334455", fontStyle: "bold",
+        fontSize: "10px", color: "#4488bb", fontStyle: "bold",
       })
       .setOrigin(0.5).setScrollFactor(0).setDepth(depth + 2);
 
@@ -473,6 +483,20 @@ export class InventoryUI {
     this.refresh();
   }
 
+  private onDropClick() {
+    if (this.selectedGridSlot < 0) return;
+    const slot = this.gridSlots[this.selectedGridSlot];
+    if (!slot.itemId) return;
+    const itemId = slot.itemId;
+    const count  = this.inventory.get(itemId) ?? 0;
+    if (count <= 0) return;
+    if (count === 1) this.inventory.delete(itemId);
+    else this.inventory.set(itemId, count - 1);
+    this.selectedGridSlot = -1;
+    if (this.room) this.room.send("drop_item", { itemId });
+    this.refresh();
+  }
+
   private onGridClick(i: number) {
     if (!this.panelOpen) return;
     const slot = this.gridSlots[i];
@@ -613,6 +637,7 @@ export class InventoryUI {
     const KC    = Phaser.Input.Keyboard.KeyCodes;
     this.keyI   = kb.addKey(KC.I);
     this.keyE   = kb.addKey(KC.E);
+    this.keyEsc = kb.addKey(KC.ESC);
     this.keys18 = [
       kb.addKey(KC.ONE), kb.addKey(KC.TWO),   kb.addKey(KC.THREE),
       kb.addKey(KC.FOUR), kb.addKey(KC.FIVE),  kb.addKey(KC.SIX),

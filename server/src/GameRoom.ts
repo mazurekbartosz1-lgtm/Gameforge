@@ -106,6 +106,7 @@ const SANITY_KILL_PENALTY   = 20;   // -20 sanity per enemy kill
 const SANITY_HARVEST_BONUS  = 2;    // +2 sanity per resource harvested
 const BASE_ATTACK  = 5;
 const BASE_DEFENSE = 2;
+const PICKUP_RANGE = 64;   // px — max distance to pick up a dropped item
 
 const TILE_PX             = 16;   // pixels per tile (mirrors client TILE_SIZE)
 const ENEMY_ZONE_TILES    = 16;   // tiles per enemy spawn zone side (256 px)
@@ -181,6 +182,16 @@ function mapRockAtChunk(cx: number, cy: number, seed: number): { wx: number; wy:
   return { wx, wy };
 }
 
+// ─── Dropped items ────────────────────────────────────────────────────────────
+
+interface DroppedItemData {
+  id:       string;
+  itemId:   string;
+  qty:      number;
+  x:        number;
+  y:        number;
+}
+
 // ─── Room ────────────────────────────────────────────────────────────────────
 
 export class GameRoom extends Room<GameRoomOptions> {
@@ -195,6 +206,9 @@ export class GameRoom extends Room<GameRoomOptions> {
   private deadFoodNodes = new Map<string, number>();
   /** Cache of tile-blocked status for enemy map collision. */
   private mapTileBlockedCache = new Map<string, boolean>();
+
+  /** Items dropped on the ground — persist for room lifetime. */
+  private droppedItems = new Map<string, DroppedItemData>();
 
   /** Fog-of-war tiles discovered per player (sessionId → "tx,ty"[]). */
   private playerFog = new Map<string, string[]>();
@@ -841,6 +855,8 @@ export class GameRoom extends Room<GameRoomOptions> {
         // Restore inventory — send flat array (each item repeated qty times)
         client.send("inventory_load", Array.from(self.inventory));
       }
+      // Send all currently dropped items on the ground
+      client.send("dropped_items_init", Array.from(this.droppedItems.values()));
     });
 
     this.onMessage("fog_update", (client, tiles: string[]) => {
@@ -1032,6 +1048,38 @@ export class GameRoom extends Room<GameRoomOptions> {
       // Persist inventory immediately after eat
       const fog = this.playerFog.get(client.sessionId) ?? [];
       savePlayer(player, fog).catch((e) => console.warn("[DB] eat save error:", e));
+    });
+
+    this.onMessage("drop_item", (client, data: { itemId: string }) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player) return;
+      const idx = player.inventory.indexOf(data.itemId);
+      if (idx === -1) return;
+      player.inventory.splice(idx, 1);
+      const id = `drop_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const drop: DroppedItemData = { id, itemId: data.itemId, qty: 1, x: player.x, y: player.y };
+      this.droppedItems.set(id, drop);
+      this.broadcast("item_dropped", drop);
+      client.send("inventory_load", Array.from(player.inventory));
+      const fog = this.playerFog.get(client.sessionId) ?? [];
+      savePlayer(player, fog).catch((e) => console.warn("[DB] drop save error:", e));
+      console.log(`[GameRoom] ${player.nickname} dropped ${data.itemId} at (${Math.round(player.x)}, ${Math.round(player.y)})`);
+    });
+
+    this.onMessage("pickup_item", (client, data: { id: string }) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player) return;
+      const drop = this.droppedItems.get(data.id);
+      if (!drop) return;
+      const dist = Math.hypot(drop.x - player.x, drop.y - player.y);
+      if (dist > PICKUP_RANGE) return;
+      for (let i = 0; i < drop.qty; i++) player.inventory.push(drop.itemId);
+      this.droppedItems.delete(data.id);
+      this.broadcast("item_removed", { id: data.id });
+      client.send("inventory_load", Array.from(player.inventory));
+      const fog = this.playerFog.get(client.sessionId) ?? [];
+      savePlayer(player, fog).catch((e) => console.warn("[DB] pickup save error:", e));
+      console.log(`[GameRoom] ${player.nickname} picked up ${drop.itemId} (x${drop.qty})`);
     });
 
     this.onMessage("attack_enemy", (client, data: { enemyId: string }) => {

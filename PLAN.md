@@ -651,7 +651,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 25: Inventory UI 4×5 grid + eat action ⭐ NASTĘPNE
+### [x] Wieczór 25: Inventory UI 4×5 grid + eat action
 
 ```
 Create an inventory UI in the Phaser game.
@@ -760,8 +760,8 @@ Confirm when done and show me what was created.
 
 ---
 
-### [x] Wieczór 27: Survival mechanics HUD
-DONE (inaczej niż planowano) — HP/Hunger/Sanity bars + Atak/Obrona zrobione w `PlayerPanel.tsx` (React sidebar, nie Phaser UIScene). DAY/NIGHT indicator client-side. Stats update via `stats_update` Colyseus event. Atak czerwony + "↓ obniżony" przy sanity≤0.
+### [x] Wieczór 27: Drop mechanic — wyrzucanie itemów na ziemię
+DONE (Session 15) — `drop_item`/`pickup_item` handlers na serwerze, dropped items in-memory (room lifetime), sprite kółko z symbolem itemu, E key pickup z priorytetem nad harvest, ESC zamyka inventory, fix resource generation przy spawn_at (deadTreesInitDone/deadRocksInitDone flagi).
 
 ```
 ORIGINAL PROMPT (nieaktualne — HUD zrobiony w React sidebarze):

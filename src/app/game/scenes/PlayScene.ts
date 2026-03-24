@@ -11,6 +11,7 @@ import {
 import { isForestTile, treeAtChunk, rockAtChunk, foodAtChunk, TILE_SIZE, TREE_STEP, ROCK_STEP, FOOD_STEP } from "../world/MapGenerator";
 import { getRoom } from "../network/ColyseusClient";
 import { InventoryUI } from "../ui/InventoryUI";
+import { ITEM_MAP } from "../ui/itemConfig";
 
 type Direction = "down" | "up" | "left" | "right";
 
@@ -53,6 +54,14 @@ interface FoodNodeData {
   x: number;
   y: number;
   isAlive: boolean;
+}
+
+interface DroppedItemMsg {
+  id:     string;
+  itemId: string;
+  qty:    number;
+  x:      number;
+  y:      number;
 }
 
 const ANIM_MAP: Record<string, { texture: string; flipX: boolean }> = {
@@ -114,11 +123,17 @@ export class PlayScene extends Scene {
   private generatedFoodChunks = new Set<string>();
   private deadTrees = new Set<string>();
   private deadRocks = new Set<string>();
+  private deadTreesInitDone = false;
+  private deadRocksInitDone = false;
   // Food nodes: id → respawnAt (0 = alive)
   private deadFoodNodes = new Map<string, number>();
   private foodNodeData  = new Map<string, FoodNodeData>();
   private foodSprites   = new Map<string, Phaser.GameObjects.Image>();
   private foodInitDone  = false;
+
+  // Dropped items on the ground
+  private droppedItemData    = new Map<string, DroppedItemMsg>();
+  private droppedItemSprites = new Map<string, { gfx: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.Text }>();
 
   private mapSeed = 42;
 
@@ -421,6 +436,12 @@ export class PlayScene extends Scene {
       this.sprites.forEach((s) => { s.x = this.px; s.y = this.py; });
       this.toolSprites.forEach((s) => { s.x = this.px; s.y = this.py; });
       this.followTarget.setPosition(this.px, this.py);
+      // Regenerate resources around new spawn position (only when dead-state lists are ready)
+      const tileX = Math.floor(this.px / TILE_SIZE);
+      const tileY = Math.floor(this.py / TILE_SIZE);
+      if (this.deadTreesInitDone) this.generateTreeChunksAround(tileX, tileY);
+      if (this.deadRocksInitDone) this.generateRockChunksAround(tileX, tileY);
+      if (this.foodInitDone) this.generateFoodChunksAround(tileX, tileY);
     });
 
     room.onMessage("fog_load", (tiles: string[]) => {
@@ -487,14 +508,16 @@ export class PlayScene extends Scene {
     // Trees: wait for dead list before initial generation
     room.onMessage("dead_trees_init", (ids: string[]) => {
       ids.forEach((id) => this.deadTrees.add(id));
-      this.generateTreeChunksAround(0, 0);
+      this.deadTreesInitDone = true;
+      this.generateTreeChunksAround(Math.floor(this.px / TILE_SIZE), Math.floor(this.py / TILE_SIZE));
     });
     room.send("request_dead_trees", {});
 
     // Rocks: same — wait for dead list before generating
     room.onMessage("dead_rocks_init", (ids: string[]) => {
       ids.forEach((id) => this.deadRocks.add(id));
-      this.generateRockChunksAround(0, 0);
+      this.deadRocksInitDone = true;
+      this.generateRockChunksAround(Math.floor(this.px / TILE_SIZE), Math.floor(this.py / TILE_SIZE));
     });
     room.send("request_dead_rocks", {});
 
@@ -518,7 +541,8 @@ export class PlayScene extends Scene {
     room.onMessage("dead_food_init", (deadList: Array<{ id: string; respawnAt: number }>) => {
       deadList.forEach(({ id, respawnAt }) => this.deadFoodNodes.set(id, respawnAt));
       this.foodInitDone = true;
-      this.generateFoodChunksAround(0, 0);
+      // Generate around current player position (not origin) — fixes missing food after spawn_at
+      this.generateFoodChunksAround(Math.floor(this.px / TILE_SIZE), Math.floor(this.py / TILE_SIZE));
     });
     room.send("request_dead_food", {});
 
@@ -578,6 +602,18 @@ export class PlayScene extends Scene {
         this.inventory.set(item, (this.inventory.get(item) ?? 0) + 1);
       }
       this.invUI.refresh();
+    });
+
+    room.onMessage("dropped_items_init", (drops: DroppedItemMsg[]) => {
+      drops.forEach((d) => this.spawnDroppedItemSprite(d));
+    });
+
+    room.onMessage("item_dropped", (data: DroppedItemMsg) => {
+      this.spawnDroppedItemSprite(data);
+    });
+
+    room.onMessage("item_removed", (data: { id: string }) => {
+      this.removeDroppedItemSprite(data.id);
     });
   }
 
@@ -805,6 +841,50 @@ export class PlayScene extends Scene {
   private killFoodSprite(id: string) {
     const sprite = this.foodSprites.get(id);
     if (sprite) { sprite.destroy(); this.foodSprites.delete(id); }
+  }
+
+  private spawnDroppedItemSprite(data: DroppedItemMsg) {
+    if (this.droppedItemSprites.has(data.id)) return;
+    this.droppedItemData.set(data.id, data);
+    const def   = ITEM_MAP[data.itemId];
+    const color = def ? Phaser.Display.Color.HexStringToColor(def.color).color : 0xffffff;
+    const symbol = def?.symbol ?? "?";
+
+    const gfx = this.add.graphics().setDepth(4);
+    gfx.fillStyle(color, 0.7);
+    gfx.fillCircle(data.x, data.y, 10);
+    gfx.lineStyle(2, 0xffffff, 0.9);
+    gfx.strokeCircle(data.x, data.y, 10);
+    gfx.setVisible(false);
+
+    const label = this.add.text(data.x, data.y - 16, symbol, {
+      fontSize: "9px", color: "#ffffff", stroke: "#000000", strokeThickness: 2, fontStyle: "bold",
+    }).setOrigin(0.5).setDepth(5).setVisible(false);
+
+    this.droppedItemSprites.set(data.id, { gfx, label });
+  }
+
+  private removeDroppedItemSprite(id: string) {
+    const s = this.droppedItemSprites.get(id);
+    if (!s) return;
+    s.gfx.destroy();
+    s.label.destroy();
+    this.droppedItemSprites.delete(id);
+    this.droppedItemData.delete(id);
+  }
+
+  /** Find nearest dropped item within 48px pickup range. */
+  private findNearestDrop(): string | null {
+    const REACH = 48;
+    let best: string | null = null;
+    let bestDistSq = REACH * REACH;
+    for (const [id, data] of this.droppedItemData) {
+      const dx = data.x - this.px;
+      const dy = data.y - this.py;
+      const dSq = dx * dx + dy * dy;
+      if (dSq < bestDistSq) { bestDistSq = dSq; best = id; }
+    }
+    return best;
   }
 
   /** Find nearest alive food node within harvest reach (48px) in facing direction. */
@@ -1250,8 +1330,26 @@ export class PlayScene extends Scene {
       sprite.setVisible(fn.isAlive && (dx * dx + dy * dy) <= visionPxSq);
     });
 
-    // E key: harvest tree/rock/food adjacent to player (skip if panel consumed E)
+    // Dropped item visibility
+    this.droppedItemData.forEach((data, id) => {
+      const s = this.droppedItemSprites.get(id);
+      if (!s) return;
+      const dx = data.x - this.px;
+      const dy = data.y - this.py;
+      const visible = dx * dx + dy * dy <= visionPxSq;
+      s.gfx.setVisible(visible);
+      s.label.setVisible(visible);
+    });
+
+    // E key: pickup dropped item (highest priority), then harvest tree/rock/food
     if (eJustDown && !this.isActionPlaying && !eConsumedByUI) {
+      const dropId = this.findNearestDrop();
+      if (dropId && this.room) {
+        this.room.send("pickup_item", { id: dropId });
+        const def = ITEM_MAP[this.droppedItemData.get(dropId)?.itemId ?? ""];
+        this.showPickupText(this.px, this.py - 50, `+ ${def?.name ?? dropId}`, "#88ddff");
+        this.removeDroppedItemSprite(dropId); // optimistic local removal
+      } else {
       const harvestId = this.findAdjacentResource(tileX, tileY) ?? this.findAdjacentFood();
       if (harvestId) {
         // Immediate local update so player can't double-harvest
@@ -1278,6 +1376,7 @@ export class PlayScene extends Scene {
         }
         this.playActionAnim("collect");
       }
+      } // else (no drop nearby)
     }
 
     // F key: eat first available food

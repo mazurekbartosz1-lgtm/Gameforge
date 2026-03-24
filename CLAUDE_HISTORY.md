@@ -830,6 +830,32 @@ Sprawdź PLAN.md pod Wieczór 26.
 
 ---
 
+## Session 27 — 2026-03-24 (Session 15)
+
+### What was done
+- **Wieczór 27 COMPLETE ✅** — Drop mechanic (wyrzucanie itemów na ziemię)
+- `server/src/GameRoom.ts` — `DroppedItemData` interface, `droppedItems: Map` (in-memory, room lifetime), `PICKUP_RANGE=64px`, handlery `drop_item` i `pickup_item`, `dropped_items_init` w `request_players`
+- `src/app/game/ui/InventoryUI.ts` — aktywacja przycisku WYRZUĆ (niebieski, hover, `onDropClick()`), ESC zamyka panel (`keyEsc`)
+- `src/app/game/scenes/PlayScene.ts` — `DroppedItemMsg` interface, `droppedItemData`/`droppedItemSprites` maps, `spawnDroppedItemSprite`/`removeDroppedItemSprite`/`findNearestDrop`, handlery `dropped_items_init`/`item_dropped`/`item_removed`, E key pickup z priorytetem nad harvest
+- **Bug fix:** resource generation przy spawn_at — `dead_trees_init`/`dead_rocks_init`/`dead_food_init` generowały zasoby wokół (0,0); goście i gracze z zapisaną pozycją nie widzieli drzew/jedzenia do pierwszego ruchu
+- **Fix:** flagi `deadTreesInitDone`/`deadRocksInitDone`, init handlery generują wokół `Math.floor(px/TILE_SIZE)`, `spawn_at` generuje tylko gdy init ready
+
+### Decisions made
+- Dropped items żyją przez cały lifetime roomu (nie wygasają) — in-memory `droppedItems` Map, bez persystencji w DB
+- Free-for-all pickup — każdy gracz może podnieść item wyrzucony przez innego
+- Pickup range: 48px klient, 64px serwer-side validation (bufor na network jitter)
+- Sprite: kolorowy krąg (Phaser Graphics) + symbol itemu; nie generuje osobnej tekstury per item (prostsze, flexible)
+- ESC zamyka inventory (nie blokuje ruchu gracza, tylko gdy panel jest otwarty)
+
+### Problems encountered
+- `spawn_at` fix z poprzedniej sesji (generateTreeChunksAround w spawn_at) generował drzewa przed załadowaniem dead-tree list → martwe drzewa widoczne jako żywe. Fix: flagi `deadTreesInitDone`/`deadRocksInitDone`
+- Goście nie widzieli food sprites bo `dead_food_init` generował wokół (0,0) a nie aktualnej pozycji → fix: używamy `this.px/py`
+
+### Next step
+**Wieczór 28** — Building system: bonfire (3 wood), placement mechanic, server broadcast budynków.
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

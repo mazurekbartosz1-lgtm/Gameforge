@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-24 (Session 14, W26 — Enemy drop system + equippable items + inventory UI improvements)
+2026-03-24 (Session 15, W27 — Drop mechanic, ESC closes inventory, resource generation fix)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -32,6 +32,7 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ Wieczór 23+24 (Session 11): Food nodes (mushrooms/berry bushes), harvest E, eat F, itemConfig + foodConfig
 - ✅ Wieczór 25 (Session 12+13): Inventory UI — hotbar 8 slotów + panel 4×5 [I], numerki 1–8, kliknięcie/E eat; guest persistence (guestId sessionStorage, DB save/load, F5 restore); stale session race condition fix
 - ✅ Wieczór 26 (Session 14): Enemy drop system — loot table (7 gear items), equip/unequip/destroy, side info modal z porównaniem statystyk
+- ✅ Wieczór 27 (Session 15): Drop mechanic — wyrzucanie itemów na ziemię, pickup przez E, sprite kółko z symbolem; ESC zamyka inventory; fix resource generation przy spawn_at
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
@@ -86,6 +87,37 @@ Gameforge/
 | Dev server | ts-node + nodemon |
 | Deployment target | Railway — `gameforge-production-d7c8.up.railway.app` |
 | WebSocket URL | `wss://gameforge-production-d7c8.up.railway.app` |
+
+## Wieczór 27 additions (Session 15)
+
+### Drop mechanic
+- `server/src/GameRoom.ts` — `DroppedItemData` interface `{ id, itemId, qty, x, y }`; `droppedItems: Map<string, DroppedItemData>` (in-memory, room lifetime)
+- Handler `drop_item { itemId }` → removes from inventory, creates drop at player position, broadcasts `item_dropped`; saves player to DB
+- Handler `pickup_item { id }` → validates dist ≤ `PICKUP_RANGE=64px`, adds to inventory, removes drop, broadcasts `item_removed`, sends `inventory_load`; saves player to DB
+- `request_players` handler now also sends `dropped_items_init` (all current drops) to joining players
+
+### Inventory UI
+- `src/app/game/ui/InventoryUI.ts` — WYRZUĆ button aktywny (niebieskie tło, hover, `onDropClick()`); wysyła `drop_item { itemId }`; ESC zamyka panel
+- Panel: `keyEsc` dodany do `bindKeys()`
+
+### PlayScene
+- `DroppedItemMsg` interface `{ id, itemId, qty, x, y }`
+- `droppedItemData: Map<string, DroppedItemMsg>`, `droppedItemSprites: Map<string, { gfx, label }>`
+- `spawnDroppedItemSprite(data)` — kolorowy krąg (kolor z ITEM_MAP, radius 10px) + symbol itemu; depth 4/5
+- `removeDroppedItemSprite(id)` — niszczy gfx + label
+- `findNearestDrop()` — szuka droppowanego itemu ≤48px od gracza
+- Handlery: `dropped_items_init`, `item_dropped`, `item_removed`
+- E key: pickup dropped item (priorytet nad harvest); optimistic local removal + floating text
+- Visibility: dropped items ukryte poza vision radius (jak food/resources)
+- Import `ITEM_MAP` z `../ui/itemConfig`
+
+### Resource generation fix (bug przy spawn_at)
+- **Problem:** `dead_trees_init`/`dead_rocks_init`/`dead_food_init` generowały zasoby wokół `(0,0)` zamiast aktualnej pozycji gracza. Gracze spawnujący w zapisanej pozycji (daleko od originu) nie widzieli drzew/jedzenia do momentu ruchu.
+- **Fix 1:** Flagi `deadTreesInitDone`/`deadRocksInitDone` — `spawn_at` handler generuje zasoby tylko gdy dead-state lists są gotowe
+- **Fix 2:** `dead_trees_init`, `dead_rocks_init`, `dead_food_init` generują wokół `Math.floor(this.px / TILE_SIZE), Math.floor(this.py / TILE_SIZE)` zamiast `(0, 0)`
+- **Fix 3:** `spawn_at` handler po ustawieniu pozycji wywołuje generate dla każdego typu zasobu (jeśli odpowiedni init już się zakończył)
+
+---
 
 ## Wieczór 26 additions (Session 14)
 
