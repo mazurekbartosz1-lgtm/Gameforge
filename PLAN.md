@@ -802,12 +802,13 @@ Confirm when done and show me what was created.
 ---
 
 *Wieczóry 28–30 (Building & cooking) przeniesione do Tygodnia 10 (W51–W55) zgodnie z priorytetami.*
+*Wieczór 34 (Onboarding) przeniesiony na koniec (po W55) — platforma najpierw, UX flow na końcu.*
 
 ---
 
 ## TYDZIEŃ 6 — GameForge platform
 
-### [ ] Wieczór 31: Group creation API
+### [x] Wieczór 31: Group creation API
 
 ```
 Create the API endpoint for group creation in Next.js.
@@ -905,7 +906,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 34: Onboarding — 3 steps
+### [ ] Wieczór 34: Onboarding — 3 steps *(przeniesiony na koniec)*
 
 ```
 Create a 3-step onboarding flow for new users in Next.js.

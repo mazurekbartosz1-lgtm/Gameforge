@@ -856,6 +856,34 @@ Sprawdź PLAN.md pod Wieczór 26.
 
 ---
 
+---
+
+## Session 28 — 2026-03-24 (Session 16)
+
+### What was done
+- **Wieczór 31 COMPLETE ✅** — Group creation API
+- `src/middleware.ts` — dodano `clerkMiddleware()` (brakowało, `auth()` rzucało błąd bez niego)
+- `src/lib/supabase.ts` — server-side Supabase admin client (`createClient` z `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, `persistSession: false`)
+- `src/app/api/groups/route.ts` — GET (lista grup usera) + POST (tworzenie grupy z losowym 6-znakowym kodem)
+- `src/app/api/groups/join/route.ts` — POST dołączanie do grupy po kodzie (idempotent)
+- Zaadaptowano do istniejącego schematu Supabase: `player_id UUID` (FK do players), `creator_id UUID` — nie `clerk_id TEXT` jak planowano
+- `@supabase/supabase-js` zainstalowany w root package.json
+
+### Decisions made
+- API używa `player_id` (UUID z tabeli players) zamiast `clerk_id` — schemat już istniał w Supabase z FK do players
+- `group_members` PK jest composite (player_id, group_id) — bez osobnego `id UUID`
+- Kod grupy: 6 znaków (ABCDEFGHJKLMNPQRSTUVWXYZ23456789), bez mylących liter (I, O, 0, 1)
+- Join jest idempotent — ponowne dołączenie do grupy zwraca 200 z aktualną rolą
+
+### Problems encountered
+- `auth()` rzucało błąd bez `clerkMiddleware()` w src/middleware.ts — brakujący plik middleware
+- Istniejący schemat tabel różnił się od planowanego (player_id UUID vs clerk_id TEXT, creator_id vs created_by)
+
+### Next step
+**Wieczór 32** — Join by link + join by code on start screen (frontend UI do dołączania do grupy).
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,
