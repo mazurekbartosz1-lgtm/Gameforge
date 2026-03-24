@@ -275,7 +275,7 @@ export class PlayScene extends Scene {
     else {
       // offline/solo: no dead-resource list to wait for
       this.generateTreeChunksAround(0, 0);
-      this.generateRockChunksAround(0, 0);
+      this.generateRockChunksAround(0, 0); // offline: generate immediately (no dead state)
       this.foodInitDone = true;
       this.generateFoodChunksAround(0, 0);
     }
@@ -490,6 +490,13 @@ export class PlayScene extends Scene {
       this.generateTreeChunksAround(0, 0);
     });
     room.send("request_dead_trees", {});
+
+    // Rocks: same — wait for dead list before generating
+    room.onMessage("dead_rocks_init", (ids: string[]) => {
+      ids.forEach((id) => this.deadRocks.add(id));
+      this.generateRockChunksAround(0, 0);
+    });
+    room.send("request_dead_rocks", {});
 
     room.onMessage("tree_dead", (data: { id: string }) => {
       this.deadTrees.add(data.id);

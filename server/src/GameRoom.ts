@@ -1,7 +1,7 @@
 import { Room, Client, type RoomOptions } from "@colyseus/core";
 import { Schema, MapSchema, ArraySchema, type } from "@colyseus/schema";
 import { verifyToken } from "@clerk/backend";
-import { loadPlayer, savePlayer, deletePlayer, loadWorldSeed, saveWorldSeed } from "./db.js";
+import { loadPlayer, savePlayer, deletePlayer, loadWorldSeed, saveWorldSeed, loadDeadResources, saveDeadResources } from "./db.js";
 import { FOOD_CONFIG } from "./foodConfig.js";
 
 interface GameRoomOptions extends RoomOptions {
@@ -216,6 +216,11 @@ export class GameRoom extends Room<GameRoomOptions> {
       console.log(`[GameRoom] Generated new world seed: ${state.mapSeed}`);
     }
     this.setState(state);
+    // Load persistent dead trees and rocks
+    const { deadTrees, deadRocks } = await loadDeadResources();
+    deadTrees.forEach(id => this.deadTrees.set(id, 0));
+    deadRocks.forEach(id => this.deadRocks.add(id));
+    console.log(`[GameRoom] Loaded ${deadTrees.length} dead trees, ${deadRocks.length} dead rocks`);
     // Single interval at ENEMY_MOVE_RATE (100ms); game logic fires every TICK_RATE ms via accumulator.
     this.setSimulationInterval((dt: number) => this.masterTick(dt), ENEMY_MOVE_RATE);
     this.registerMessageHandlers();
@@ -864,6 +869,10 @@ export class GameRoom extends Room<GameRoomOptions> {
       client.send("dead_trees_init", Array.from(this.deadTrees.keys()));
     });
 
+    this.onMessage("request_dead_rocks", (client) => {
+      client.send("dead_rocks_init", Array.from(this.deadRocks));
+    });
+
     this.onMessage("request_dead_food", (client) => {
       // Send alive dead-food entries (not yet respawned)
       const now = Date.now();
@@ -934,6 +943,13 @@ export class GameRoom extends Room<GameRoomOptions> {
       if (player) {
         const fog = this.playerFog.get(client.sessionId) ?? [];
         savePlayer(player, fog).catch((e) => console.warn("[DB] harvest save error:", e));
+      }
+      // Persist dead trees/rocks world state
+      if (data.id.startsWith("tree_") || data.id.startsWith("rock_")) {
+        saveDeadResources(
+          Array.from(this.deadTrees.keys()),
+          Array.from(this.deadRocks)
+        ).catch((e) => console.warn("[DB] saveDeadResources error:", e));
       }
     });
 

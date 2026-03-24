@@ -100,6 +100,41 @@ export async function saveWorldSeed(seed: number): Promise<void> {
   }
 }
 
+// ─── Dead resource persistence (world-level) ─────────────────────────────────
+
+export async function loadDeadResources(): Promise<{ deadTrees: string[]; deadRocks: string[] }> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("world_config")
+      .select("key, value")
+      .in("key", ["dead_trees", "dead_rocks"]);
+
+    if (error) { console.warn("[DB] loadDeadResources error:", error.message); return { deadTrees: [], deadRocks: [] }; }
+
+    const rows = (data ?? []) as { key: string; value: string }[];
+    const deadTrees = JSON.parse(rows.find(r => r.key === "dead_trees")?.value ?? "[]") as string[];
+    const deadRocks = JSON.parse(rows.find(r => r.key === "dead_rocks")?.value ?? "[]") as string[];
+    return { deadTrees, deadRocks };
+  } catch (err) {
+    console.warn("[DB] loadDeadResources exception:", err);
+    return { deadTrees: [], deadRocks: [] };
+  }
+}
+
+export async function saveDeadResources(deadTrees: string[], deadRocks: string[]): Promise<void> {
+  try {
+    const { error } = await supabaseAdmin
+      .from("world_config")
+      .upsert([
+        { key: "dead_trees", value: JSON.stringify(deadTrees) },
+        { key: "dead_rocks", value: JSON.stringify(deadRocks) },
+      ]);
+    if (error) console.warn("[DB] saveDeadResources error:", error.message);
+  } catch (err) {
+    console.warn("[DB] saveDeadResources exception:", err);
+  }
+}
+
 // ─── Player persistence ───────────────────────────────────────────────────────
 
 export async function deletePlayer(userId: string): Promise<void> {
