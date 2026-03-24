@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-24 (Session 12, W25 — Inventory UI, guest persistence)
+2026-03-24 (Session 13, W25 — stale session race condition fix)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -30,7 +30,7 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ UI redesign (Session 9): HUD przebudowany wg Stitch concept — OPERATOR header, TACTICAL_MAP, minimap na HTML canvas, QUEST_OBJ, fix Clerk overflow
 - ✅ Wieczór 20–22 (Session 10): Supabase player persistence — load on join, save on leave + auto-save co 30s, fog of war persistence per-player
 - ✅ Wieczór 23+24 (Session 11): Food nodes (mushrooms/berry bushes), harvest E, eat F, itemConfig + foodConfig
-- ✅ Wieczór 25 (Session 12): Inventory UI — hotbar 8 slotów + panel 4×5 [I], numerki 1–8, kliknięcie/E eat; guest persistence (guestId sessionStorage, DB save/load, F5 restore)
+- ✅ Wieczór 25 (Session 12+13): Inventory UI — hotbar 8 slotów + panel 4×5 [I], numerki 1–8, kliknięcie/E eat; guest persistence (guestId sessionStorage, DB save/load, F5 restore); stale session race condition fix
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
@@ -117,6 +117,7 @@ Gameforge/
 
 ### Session deduplication (F5 fix)
 - `onJoin` sprawdza czy `userId` już istnieje w pokoju (stale session) — jeśli tak, kopiuje stan do nowej sesji i usuwa starą; broadcast `player_remove` dla starego sessionId
+- **Race condition fix (Session 13)**: `onJoin` teraz wywołuje `await savePlayer(stale, staleFog)` PRZED `state.players.delete(staleSessionId)`. Bez tego: `onLeave` starej sesji znajdowało `null` w `state.players` → `savePlayer` nie był wywoływany → pozycja/inventarz tracone po szybkim F5
 
 ### Fog of war persistence
 - `playerFog: Map<sessionId, string[]>` w GameRoom — trzyma "tx,ty" kafle per gracz w pamięci

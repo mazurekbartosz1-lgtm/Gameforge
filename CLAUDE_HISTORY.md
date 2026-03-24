@@ -779,6 +779,28 @@ Sprawdź PLAN.md pod Wieczór 26.
 
 ---
 
+## Session 25 — 2026-03-24 (Session 13)
+
+### What was done
+- **Bug fix**: stale session race condition — pozycja i inwentarz gościa/gracza tracone po szybkim F5
+- `server/src/GameRoom.ts` — `onJoin` stale detection (oba bloki: zalogowany + gość) teraz wywołuje `await savePlayer(stale, staleFog)` PRZED `state.players.delete(staleSessionId)`
+
+### Root cause
+Stare `onJoin` robiło `state.players.delete(staleSessionId)` synchronicznie, zanim `onLeave` starej sesji miało szansę zapisać. `onLeave` szukał gracza po `client.sessionId` — znajdował `null` → `if (player)` false → `savePlayer` pominięty → tracono pozycję + inwentarz.
+
+### Decisions made
+- `await savePlayer` w stale detection (nie fire-and-forget) — gwarantuje zapis przed usunięciem z `state.players`
+- Ta sama poprawka dotyczy obu ścieżek: zalogowany gracz (Clerk JWT) + gość (guestId)
+
+### Problems encountered
+- Brak — poprawka jednolinijkowa w dwóch miejscach, od razu działała
+
+### Next step
+**Wieczór 26** — Enemy drop system (loot table, equippable items, pickup mechanic).
+Sprawdź PLAN.md pod Wieczór 26.
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

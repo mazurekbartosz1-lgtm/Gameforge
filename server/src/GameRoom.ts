@@ -273,6 +273,8 @@ export class GameRoom extends Room<GameRoomOptions> {
           stale.equipment.forEach((itemId, slot) => player.equipment.set(slot, itemId));
           // Move fog to new session
           const staleFog = this.playerFog.get(staleSessionId) ?? [];
+          // Save stale player before removing — onLeave will find null otherwise
+          await savePlayer(stale, staleFog);
           this.playerFog.set(client.sessionId, staleFog);
           this.playerFog.delete(staleSessionId);
           this.state.players.delete(staleSessionId);
@@ -332,6 +334,8 @@ export class GameRoom extends Room<GameRoomOptions> {
         stale.inventory.forEach((item) => player.inventory.push(item));
         stale.equipment.forEach((itemId, slot) => player.equipment.set(slot, itemId));
         const staleFog = this.playerFog.get(staleSessionId) ?? [];
+        // Save stale player before removing — onLeave will find null otherwise
+        await savePlayer(stale, staleFog);
         this.playerFog.set(client.sessionId, staleFog);
         this.playerFog.delete(staleSessionId);
         this.state.players.delete(staleSessionId);
