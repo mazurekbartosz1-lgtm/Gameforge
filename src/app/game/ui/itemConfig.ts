@@ -1,20 +1,36 @@
 export interface ItemDef {
-  id:      string;
-  name:    string;
-  color:   string;   // hex fill for icon
-  symbol:  string;   // 1–2 char glyph drawn on slot
-  eatable: boolean;
+  id:           string;
+  name:         string;
+  color:        string;   // hex fill for icon
+  symbol:       string;   // 1–2 char glyph drawn on slot
+  eatable:      boolean;
+  equippable:   boolean;
+  equipSlot?:   "weapon" | "armor" | "helmet" | "item";
+  rarity?:      "common" | "uncommon" | "rare";
+  attackBonus?:  number;
+  defenseBonus?: number;
 }
 
 /** All items the player can carry, in hotbar display order. */
 export const ITEM_DEFS: ItemDef[] = [
-  { id: "wood",            name: "Wood",            color: "#c8a46e", symbol: "W",  eatable: false },
-  { id: "stone",           name: "Stone",           color: "#aaaaaa", symbol: "S",  eatable: false },
-  { id: "mushroom",        name: "Mushroom",        color: "#88cc44", symbol: "M",  eatable: true  },
-  { id: "berries",         name: "Berries",         color: "#ee7788", symbol: "B",  eatable: true  },
-  { id: "raw_meat",        name: "Raw Meat",        color: "#e07050", symbol: "RM", eatable: true  },
-  { id: "cooked_meat",     name: "Cooked Meat",     color: "#e09040", symbol: "CM", eatable: true  },
-  { id: "cooked_mushroom", name: "Cooked Mushroom", color: "#aadd55", symbol: "CS", eatable: true  },
+  // Consumables / resources (hotbar slots 1–7)
+  { id: "wood",            name: "Wood",            color: "#c8a46e", symbol: "W",  eatable: false, equippable: false },
+  { id: "stone",           name: "Stone",           color: "#aaaaaa", symbol: "S",  eatable: false, equippable: false },
+  { id: "mushroom",        name: "Mushroom",        color: "#88cc44", symbol: "M",  eatable: true,  equippable: false },
+  { id: "berries",         name: "Berries",         color: "#ee7788", symbol: "B",  eatable: true,  equippable: false },
+  { id: "raw_meat",        name: "Raw Meat",        color: "#e07050", symbol: "RM", eatable: true,  equippable: false },
+  { id: "cooked_meat",     name: "Cooked Meat",     color: "#e09040", symbol: "CM", eatable: true,  equippable: false },
+  { id: "cooked_mushroom", name: "Cooked Mushroom", color: "#aadd55", symbol: "CS", eatable: true,  equippable: false },
+  // Gear — weapons
+  { id: "bone_sword",      name: "Bone Sword",      color: "#d4c080", symbol: "⚔",  eatable: false, equippable: true, equipSlot: "weapon",  rarity: "common",   attackBonus: 8  },
+  { id: "iron_sword",      name: "Iron Sword",      color: "#88aacc", symbol: "⚔",  eatable: false, equippable: true, equipSlot: "weapon",  rarity: "uncommon", attackBonus: 15 },
+  { id: "shadow_blade",    name: "Shadow Blade",    color: "#cc66ff", symbol: "⚔",  eatable: false, equippable: true, equipSlot: "weapon",  rarity: "rare",     attackBonus: 25 },
+  // Gear — armor
+  { id: "leather_armor",   name: "Leather Armor",   color: "#a87848", symbol: "🛡",  eatable: false, equippable: true, equipSlot: "armor",   rarity: "common",   defenseBonus: 5  },
+  { id: "chain_mail",      name: "Chain Mail",      color: "#99bbdd", symbol: "🛡",  eatable: false, equippable: true, equipSlot: "armor",   rarity: "uncommon", defenseBonus: 10 },
+  // Gear — helmets
+  { id: "bone_helmet",     name: "Bone Helmet",     color: "#d4c080", symbol: "⛑",  eatable: false, equippable: true, equipSlot: "helmet",  rarity: "common",   defenseBonus: 3 },
+  { id: "iron_helmet",     name: "Iron Helmet",     color: "#88aacc", symbol: "⛑",  eatable: false, equippable: true, equipSlot: "helmet",  rarity: "uncommon", defenseBonus: 7 },
 ];
 
 export const ITEM_MAP: Record<string, ItemDef> = Object.fromEntries(

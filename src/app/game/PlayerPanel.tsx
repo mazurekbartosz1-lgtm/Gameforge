@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useUser, useClerk } from "@clerk/nextjs";
+import { getRoom } from "./network/ColyseusClient";
 
 type Stats = {
   hp: number;
@@ -12,6 +13,18 @@ type Stats = {
   defense: number;
   nickname: string;
   isNight: boolean;
+  equipment?: Record<string, string>;
+};
+
+// Loot bonuses mirrored from server lootConfig (client-side read-only)
+const LOOT_INFO: Record<string, { name: string; attackBonus: number; defenseBonus: number; rarity: string }> = {
+  bone_sword:    { name: "Bone Sword",    attackBonus: 8,  defenseBonus: 0,  rarity: "common"   },
+  iron_sword:    { name: "Iron Sword",    attackBonus: 15, defenseBonus: 0,  rarity: "uncommon" },
+  shadow_blade:  { name: "Shadow Blade",  attackBonus: 25, defenseBonus: 0,  rarity: "rare"     },
+  leather_armor: { name: "Leather Armor", attackBonus: 0,  defenseBonus: 5,  rarity: "common"   },
+  chain_mail:    { name: "Chain Mail",    attackBonus: 0,  defenseBonus: 10, rarity: "uncommon" },
+  bone_helmet:   { name: "Bone Helmet",   attackBonus: 0,  defenseBonus: 3,  rarity: "common"   },
+  iron_helmet:   { name: "Iron Helmet",   attackBonus: 0,  defenseBonus: 7,  rarity: "uncommon" },
 };
 
 type Position = { x: number; y: number };
@@ -81,21 +94,50 @@ function CombatTile({
   );
 }
 
-function EquipSlot({ symbol, color, label }: { symbol: string; color: string; label: string }) {
+function EquipSlot({
+  symbol, color, label, slot, equippedId,
+}: {
+  symbol: string; color: string; label: string; slot: string; equippedId?: string;
+}) {
+  const info = equippedId ? LOOT_INFO[equippedId] : null;
+  const rarityColor = info?.rarity === "rare" ? "#FFD700" : info?.rarity === "uncommon" ? "#44ff88" : "#e4e3fe";
+
+  function handleUnequip() {
+    if (!equippedId) return;
+    const room = getRoom();
+    if (room) room.send("unequip_item", { slot });
+  }
+
   return (
     <div
-      title={label}
+      title={info ? `${info.name} — click to unequip` : label}
+      onClick={handleUnequip}
       style={{
         aspectRatio: "1",
-        background: "#16172e",
-        border: "1px solid #22233e",
+        background: info ? "#12132a" : "#16172e",
+        border: info ? `1px solid ${rarityColor}44` : "1px solid #22233e",
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        cursor: "pointer",
+        cursor: info ? "pointer" : "default",
+        padding: 2,
+        gap: 1,
       }}
     >
-      <span style={{ fontSize: 18, color, lineHeight: 1, userSelect: "none" }}>{symbol}</span>
+      {info ? (
+        <>
+          <span style={{ fontSize: 13, color: rarityColor, lineHeight: 1, userSelect: "none" }}>{symbol}</span>
+          <span style={{ fontSize: 7, color: rarityColor, lineHeight: 1, textAlign: "center", userSelect: "none", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {info.name}
+          </span>
+          <span style={{ fontSize: 7, color: "#46465b", lineHeight: 1, userSelect: "none" }}>
+            {info.attackBonus > 0 ? `+${info.attackBonus} ATK` : `+${info.defenseBonus} DEF`}
+          </span>
+        </>
+      ) : (
+        <span style={{ fontSize: 18, color, lineHeight: 1, userSelect: "none" }}>{symbol}</span>
+      )}
     </div>
   );
 }
@@ -250,10 +292,10 @@ export default function PlayerPanel() {
       <div style={{ padding: "8px 12px", borderBottom: "1px solid #16172e", display: "flex", flexDirection: "column", gap: 8 }}>
         <SectionLabel>EQUIPMENT</SectionLabel>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-          <EquipSlot symbol="✕" color="#FF8C00"  label="Weapon" />
-          <EquipSlot symbol="◆" color="#00e3fd"  label="Armor"  />
-          <EquipSlot symbol="◉" color="#f183ff"  label="Helmet" />
-          <EquipSlot symbol="+" color="#46465b"  label="Item"   />
+          <EquipSlot symbol="✕" color="#FF8C00" label="Weapon" slot="weapon" equippedId={stats?.equipment?.weapon} />
+          <EquipSlot symbol="◆" color="#00e3fd" label="Armor"  slot="armor"  equippedId={stats?.equipment?.armor}  />
+          <EquipSlot symbol="◉" color="#f183ff" label="Helmet" slot="helmet" equippedId={stats?.equipment?.helmet} />
+          <EquipSlot symbol="+" color="#46465b" label="Item"   slot="item"   equippedId={stats?.equipment?.item}   />
         </div>
       </div>
 

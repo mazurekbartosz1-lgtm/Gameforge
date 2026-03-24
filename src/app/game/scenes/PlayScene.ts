@@ -557,12 +557,18 @@ export class PlayScene extends Scene {
       this.killEnemy(data.id);
     });
 
+    room.onMessage("enemy_loot", (data: { itemId: string; itemName: string; rarity: string; x: number; y: number }) => {
+      const color = data.rarity === "rare" ? "#FFD700" : data.rarity === "uncommon" ? "#44ff88" : "#ffffff";
+      this.showPickupText(data.x, data.y - 32, `+ ${data.itemName}`, color);
+    });
+
     room.onMessage("player_damage", (data: { damage: number; hp: number }) => {
       this.showPickupText(this.px, this.py - 50, `-${data.damage} HP`);
     });
 
-    room.onMessage("stats_update", (data: { hp: number; maxHp: number; hunger: number; sanity: number; attack: number; defense: number; nickname: string; isNight: boolean }) => {
+    room.onMessage("stats_update", (data: { hp: number; maxHp: number; hunger: number; sanity: number; attack: number; defense: number; nickname: string; isNight: boolean; equipment?: Record<string, string> }) => {
       window.dispatchEvent(new CustomEvent("gameStats", { detail: data }));
+      if (data.equipment) this.invUI.updateEquipment(data.equipment);
     });
 
     room.onMessage("inventory_load", (items: string[]) => {
@@ -587,10 +593,10 @@ export class PlayScene extends Scene {
     if (parts.length) this.showPickupText(this.px, this.py - 50, parts.join("  "));
   }
 
-  private showPickupText(x: number, y: number, msg: string) {
+  private showPickupText(x: number, y: number, msg: string, color = "#ffdd44") {
     const t = this.add.text(x, y, msg, {
       fontSize: "12px",
-      color: "#ffdd44",
+      color,
       stroke: "#000000",
       strokeThickness: 3,
     }).setOrigin(0.5).setDepth(15);

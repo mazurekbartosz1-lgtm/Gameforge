@@ -3,6 +3,7 @@ import { Schema, MapSchema, ArraySchema, type } from "@colyseus/schema";
 import { verifyToken } from "@clerk/backend";
 import { loadPlayer, savePlayer, deletePlayer, loadWorldSeed, saveWorldSeed, loadDeadResources, saveDeadResources } from "./db.js";
 import { FOOD_CONFIG } from "./foodConfig.js";
+import { LOOT_TABLE, rollDrop } from "./lootConfig.js";
 
 interface GameRoomOptions extends RoomOptions {
   state: WorldState;
@@ -103,6 +104,8 @@ const HUNGER_DRAIN_PER_SEC  = 0.5 / (TICK_RATE / 1000);
 const SANITY_PASSIVE_REGEN  = 0.3 / (TICK_RATE / 1000); // slow regen when not killing
 const SANITY_KILL_PENALTY   = 20;   // -20 sanity per enemy kill
 const SANITY_HARVEST_BONUS  = 2;    // +2 sanity per resource harvested
+const BASE_ATTACK  = 5;
+const BASE_DEFENSE = 2;
 
 const TILE_PX             = 16;   // pixels per tile (mirrors client TILE_SIZE)
 const ENEMY_ZONE_TILES    = 16;   // tiles per enemy spawn zone side (256 px)
@@ -298,9 +301,10 @@ export class GameRoom extends Room<GameRoomOptions> {
             }
             if (saved.equipment && typeof saved.equipment === "object") {
               Object.entries(saved.equipment).forEach(([slot, itemId]) => {
-                player.equipment.set(slot, itemId);
+                player.equipment.set(slot, itemId as string);
               });
             }
+            this.recalcStats(player);
             player.activeSlot = saved.active_slot;
             // Restore fog
             this.playerFog.set(client.sessionId, Array.isArray(saved.fog) ? saved.fog : []);
@@ -357,6 +361,7 @@ export class GameRoom extends Room<GameRoomOptions> {
               player.equipment.set(slot, itemId as string);
             });
           }
+          this.recalcStats(player);
           player.activeSlot = saved.active_slot;
           this.playerFog.set(client.sessionId, Array.isArray(saved.fog) ? saved.fog : []);
           console.log(`[GameRoom] Guest ${userId} restored from DB`);
@@ -460,6 +465,17 @@ export class GameRoom extends Room<GameRoomOptions> {
     });
   }
 
+  private recalcStats(player: PlayerState) {
+    const weaponId = player.equipment.get("weapon");
+    const armorId  = player.equipment.get("armor");
+    const helmetId = player.equipment.get("helmet");
+    const weaponBonus  = weaponId  ? (LOOT_TABLE[weaponId]?.attackBonus  ?? 0) : 0;
+    const armorBonus   = armorId   ? (LOOT_TABLE[armorId]?.defenseBonus  ?? 0) : 0;
+    const helmetBonus  = helmetId  ? (LOOT_TABLE[helmetId]?.defenseBonus ?? 0) : 0;
+    player.attack  = BASE_ATTACK  + weaponBonus;
+    player.defense = BASE_DEFENSE + armorBonus + helmetBonus;
+  }
+
   private sendStatsToPlayers() {
     this.clients.forEach((client) => {
       const player = this.state.players.get(client.sessionId);
@@ -467,6 +483,8 @@ export class GameRoom extends Room<GameRoomOptions> {
       const effectiveAttack = player.sanity <= 0
         ? Math.max(1, Math.floor(player.attack / 2))
         : player.attack;
+      const equipment: Record<string, string> = {};
+      player.equipment.forEach((itemId, slot) => { equipment[slot] = itemId; });
       client.send("stats_update", {
         hp: player.hp,
         maxHp: player.maxHp,
@@ -476,6 +494,7 @@ export class GameRoom extends Room<GameRoomOptions> {
         defense: player.defense,
         nickname: player.nickname,
         isNight: this.state.isNight,
+        equipment,
       });
     });
   }
@@ -837,10 +856,50 @@ export class GameRoom extends Room<GameRoomOptions> {
       this.playerFog.set(client.sessionId, Array.from(merged));
     });
 
-    this.onMessage("equip", (client, data: { slot: string; itemId: string }) => {
+    this.onMessage("equip_item", (client, data: { itemId: string }) => {
       const player = this.state.players.get(client.sessionId);
       if (!player) return;
-      player.equipment.set(data.slot, data.itemId);
+      const lootItem = LOOT_TABLE[data.itemId];
+      if (!lootItem) return;
+      const idx = player.inventory.indexOf(data.itemId);
+      if (idx === -1) return;
+      // Swap: if slot already occupied, move current item back to inventory
+      const currentInSlot = player.equipment.get(lootItem.slot);
+      if (currentInSlot) player.inventory.push(currentInSlot);
+      player.inventory.splice(idx, 1);
+      player.equipment.set(lootItem.slot, data.itemId);
+      this.recalcStats(player);
+      this.sendStatsToPlayers();
+      client.send("inventory_load", Array.from(player.inventory));
+      const fog = this.playerFog.get(client.sessionId) ?? [];
+      savePlayer(player, fog).catch((e) => console.warn("[DB] equip save error:", e));
+      console.log(`[GameRoom] ${player.nickname} equipped ${data.itemId} in slot ${lootItem.slot}`);
+    });
+
+    this.onMessage("unequip_item", (client, data: { slot: string }) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player) return;
+      const itemId = player.equipment.get(data.slot);
+      if (!itemId) return;
+      player.inventory.push(itemId);
+      player.equipment.delete(data.slot);
+      this.recalcStats(player);
+      this.sendStatsToPlayers();
+      client.send("inventory_load", Array.from(player.inventory));
+      const fog = this.playerFog.get(client.sessionId) ?? [];
+      savePlayer(player, fog).catch((e) => console.warn("[DB] unequip save error:", e));
+      console.log(`[GameRoom] ${player.nickname} unequipped ${itemId} from slot ${data.slot}`);
+    });
+
+    this.onMessage("destroy_item", (client, data: { itemId: string }) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player) return;
+      const idx = player.inventory.indexOf(data.itemId);
+      if (idx === -1) return;
+      player.inventory.splice(idx, 1);
+      const fog = this.playerFog.get(client.sessionId) ?? [];
+      savePlayer(player, fog).catch((e) => console.warn("[DB] destroy save error:", e));
+      console.log(`[GameRoom] ${player.nickname} destroyed ${data.itemId}`);
     });
 
     this.onMessage("activeSlot", (client, data: { slot: number }) => {
@@ -990,11 +1049,25 @@ export class GameRoom extends Room<GameRoomOptions> {
         enemy.isAlive = false;
         enemy.hp = 0;
         this.broadcast("enemy_dead", { id: enemy.id, x: enemy.x, y: enemy.y });
-        player.inventory.push("raw_meat");
-        client.send("harvest_reward", { drops: [{ item: "raw_meat", qty: 1 }] });
+        // Roll loot drop
+        const dropId = rollDrop(enemy.type);
+        if (dropId) {
+          const lootItem = LOOT_TABLE[dropId];
+          player.inventory.push(dropId);
+          this.broadcast("enemy_loot", {
+            itemId: dropId,
+            itemName: lootItem.name,
+            rarity: lootItem.rarity,
+            x: enemy.x,
+            y: enemy.y,
+          });
+        }
         // Killing harms sanity
         player.sanity = Math.max(0, player.sanity - SANITY_KILL_PENALTY);
-        console.log(`[GameRoom] ${player.nickname} killed ${enemy.id} (sanity: ${player.sanity.toFixed(0)})`);
+        this.sendStatsToPlayers();
+        const fog = this.playerFog.get(client.sessionId) ?? [];
+        savePlayer(player, fog).catch((e) => console.warn("[DB] kill save error:", e));
+        console.log(`[GameRoom] ${player.nickname} killed ${enemy.id} → drop: ${dropId ?? "none"} (sanity: ${player.sanity.toFixed(0)})`);
       }
     });
   }

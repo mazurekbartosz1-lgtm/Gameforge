@@ -801,6 +801,35 @@ Sprawdź PLAN.md pod Wieczór 26.
 
 ---
 
+## Session 26 — 2026-03-24 (Session 14)
+
+### What was done
+- **Wieczór 26 COMPLETE ✅** — Enemy drop system + equippable items + inventory UI improvements
+- `server/src/lootConfig.ts` (nowy) — 7 gear items, weighted drop pool (bez raw_meat), `rollDrop()` z 30% no-drop
+- `GameRoom.ts` — `recalcStats()`, `equip_item`/`unequip_item`/`destroy_item` handlers, `inventory_load` po każdej operacji, `enemy_loot` broadcast, `equipment` w `stats_update`
+- `itemConfig.ts` (klient) — `equippable`/`equipSlot`/`rarity`/`attackBonus`/`defenseBonus` w `ItemDef`; 7 gear itemów
+- `InventoryUI.ts` — ekwipowanie przez klik/E, przyciski ZNISZCZ (aktywny) + WYRZUĆ (wyszarzony), side info modal (ikona, nazwa, rarity, stat, VS EQUIPPED porównanie ▲/▼)
+- `PlayScene.ts` — handler `enemy_loot` z kolorowym floating textem, `updateEquipment()` na stats_update
+- `PlayerPanel.tsx` — equipment sloty pokazują nazwę + bonus, klik → unequip
+
+### Decisions made
+- raw_meat usunięty z drop pool — huntry droppują tylko gear (bone sword/armor/helmet, iron sword/chain mail/iron helmet, shadow blade)
+- `inventory_load` wysyłany po equip/unequip/destroy — gwarantuje sync klienta z serwerem
+- Side info modal zamiast tekstu na dole panelu — czytelniejsze, z ikoną, rarity, porównaniem
+- `recalcStats` wywoływany też przy ładowaniu z DB (on join) — zapewnia poprawne stats po reconnect
+
+### Problems encountered
+- Po unequip item znikał z inventory (klient nie wiedział o powrocie) — fix: `inventory_load` po operacji
+- `stats_update` type w PlayScene.ts nie miał `equipment` — naprawiono (runtime działał, ale TS kompilował z ostrzeżeniami)
+
+### Next step
+**Wieczór 27** — Drop mechanic (wyrzucanie przedmiotów na ziemię):
+- Przycisk WYRZUĆ w inventory aktywny
+- Serwer: broadcast pozycji droppowanego itemu
+- Klient: sprite itemu na ziemi, pickup przez E
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

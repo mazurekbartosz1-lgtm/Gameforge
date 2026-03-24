@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-24 (Session 13, W25 — stale session race condition fix)
+2026-03-24 (Session 14, W26 — Enemy drop system + equippable items + inventory UI improvements)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -31,6 +31,7 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ Wieczór 20–22 (Session 10): Supabase player persistence — load on join, save on leave + auto-save co 30s, fog of war persistence per-player
 - ✅ Wieczór 23+24 (Session 11): Food nodes (mushrooms/berry bushes), harvest E, eat F, itemConfig + foodConfig
 - ✅ Wieczór 25 (Session 12+13): Inventory UI — hotbar 8 slotów + panel 4×5 [I], numerki 1–8, kliknięcie/E eat; guest persistence (guestId sessionStorage, DB save/load, F5 restore); stale session race condition fix
+- ✅ Wieczór 26 (Session 14): Enemy drop system — loot table (7 gear items), equip/unequip/destroy, side info modal z porównaniem statystyk
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
@@ -85,6 +86,24 @@ Gameforge/
 | Dev server | ts-node + nodemon |
 | Deployment target | Railway — `gameforge-production-d7c8.up.railway.app` |
 | WebSocket URL | `wss://gameforge-production-d7c8.up.railway.app` |
+
+## Wieczór 26 additions (Session 14)
+
+### Enemy drop system
+- `server/src/lootConfig.ts` (nowy) — `LootItem` interface, `LOOT_TABLE` (7 gear items: bone_sword/iron_sword/shadow_blade/leather_armor/chain_mail/bone_helmet/iron_helmet), `ENEMY_DROP_POOL` dla hunter (common×3, uncommon×2, rare×1 — bez raw_meat), `rollDrop(enemyType)` → null 30% przypadków
+- `BASE_ATTACK=5`, `BASE_DEFENSE=2` stałe + `recalcStats(player)` helper — czyta equipment MapSchema i ustawia `player.attack`/`player.defense`
+- `attack_enemy` na śmierci: `rollDrop()` → broadcast `enemy_loot { itemId, itemName, rarity, x, y }` → floating text u klienta (biały/zielony/złoty wg rarity)
+- `equip_item` handler: waliduje item w LOOT_TABLE + inventory, swap jeśli slot zajęty, recalcStats + sendStatsToPlayers + `inventory_load`
+- `unequip_item` handler: zwraca item do inventory, recalcStats + `inventory_load`
+- `destroy_item` handler: usuwa 1 sztukę z inventory, zapisuje do DB
+- `sendStatsToPlayers` teraz wysyła `equipment: Record<string,string>` w stats_update
+
+### Inventory UI improvements
+- `src/app/game/ui/itemConfig.ts` — dodano `equippable`, `equipSlot`, `rarity`, `attackBonus`, `defenseBonus` do `ItemDef`; 7 gear itemów dodanych do `ITEM_DEFS`
+- `src/app/game/ui/InventoryUI.ts` — ekwipowanie przez klik/E, przycisk ZNISZCZ (aktywny) + WYRZUĆ (wyszarzony, wkrótce), side info modal po prawej stronie z: dużym ikonem, nazwą, rarity, statystyką, porównaniem VS EQUIPPED (▲/▼ diff)
+- `src/app/game/PlayerPanel.tsx` — `EquipSlot` pokazuje nazwę itemu + bonus (+8 ATK), klik → `unequip_item`; `LOOT_INFO` mirror danych serwera
+
+---
 
 ## Wieczór 23+24 additions (Session 11)
 

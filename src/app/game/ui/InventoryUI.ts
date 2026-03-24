@@ -13,10 +13,17 @@ const CANVAS_H    = 600;
 const HOTBAR_Y = CANVAS_H - SLOT_SIZE - 8;
 const HOTBAR_X = (CANVAS_W - (HOTBAR_COLS * (SLOT_SIZE + SLOT_GAP) - SLOT_GAP)) / 2;
 
-const PANEL_W = GRID_COLS * (SLOT_SIZE + SLOT_GAP) - SLOT_GAP + 20;
-const PANEL_H = GRID_ROWS * (SLOT_SIZE + SLOT_GAP) - SLOT_GAP + 44;
-const PANEL_X = (CANVAS_W - PANEL_W) / 2;
-const PANEL_Y = (CANVAS_H - PANEL_H) / 2;
+const PANEL_W    = GRID_COLS * (SLOT_SIZE + SLOT_GAP) - SLOT_GAP + 20;
+const ACTION_H   = 28;
+const PANEL_H    = GRID_ROWS * (SLOT_SIZE + SLOT_GAP) - SLOT_GAP + 44 + ACTION_H + 8;
+const PANEL_X    = (CANVAS_W - PANEL_W) / 2;
+const PANEL_Y    = (CANVAS_H - PANEL_H) / 2;
+
+// ── Info modal (side panel) ────────────────────────────────────────────────
+const INFO_W    = 162;
+const INFO_H    = PANEL_H;
+const INFO_X    = PANEL_X + PANEL_W + 8;
+const INFO_Y    = PANEL_Y;
 
 // ── SlotGfx — one drawn slot ──────────────────────────────────────────────────
 
@@ -118,6 +125,7 @@ export class InventoryUI {
   private scene:     Phaser.Scene;
   private inventory: Map<string, number>;
   private room:      Room | null;
+  private equipment: Record<string, string> = {};
 
   // Hotbar
   private hotbarSlots: SlotGfx[] = [];
@@ -130,7 +138,28 @@ export class InventoryUI {
   private panelTitle!:       Phaser.GameObjects.Text;
   private gridSlots:         SlotGfx[] = [];
   private selectedGridSlot = -1;
-  private selectedHint!:     Phaser.GameObjects.Text;
+
+  // Action buttons
+  private destroyBg!:    Phaser.GameObjects.Rectangle;
+  private destroyLabel!: Phaser.GameObjects.Text;
+  private dropBg!:       Phaser.GameObjects.Rectangle;
+  private dropLabel!:    Phaser.GameObjects.Text;
+
+  // Info modal
+  private infoBg!:          Phaser.GameObjects.Rectangle;
+  private infoBorder!:      Phaser.GameObjects.Rectangle;
+  private infoTitle!:       Phaser.GameObjects.Text;
+  private infoIconBg!:      Phaser.GameObjects.Graphics;
+  private infoIconLabel!:   Phaser.GameObjects.Text;
+  private infoName!:        Phaser.GameObjects.Text;
+  private infoRarity!:      Phaser.GameObjects.Text;
+  private infoStat!:        Phaser.GameObjects.Text;
+  private infoStatVal!:     Phaser.GameObjects.Text;
+  private infoSep!:         Phaser.GameObjects.Graphics;
+  private infoCompHeader!:  Phaser.GameObjects.Text;
+  private infoCompName!:    Phaser.GameObjects.Text;
+  private infoCompDiff!:    Phaser.GameObjects.Text;
+  private infoActionHint!:  Phaser.GameObjects.Text;
 
   // Keys
   private keyI!:   Phaser.Input.Keyboard.Key;
@@ -152,6 +181,12 @@ export class InventoryUI {
 
   refresh() {
     this.refreshHotbar();
+    if (this.panelOpen) this.refreshGrid();
+  }
+
+  /** Update currently equipped items (called on stats_update from server). */
+  updateEquipment(eq: Record<string, string>) {
+    this.equipment = eq;
     if (this.panelOpen) this.refreshGrid();
   }
 
@@ -187,7 +222,12 @@ export class InventoryUI {
       if (this.selectedGridSlot >= 0) {
         const slot = this.gridSlots[this.selectedGridSlot];
         if (slot.itemId) {
-          this.eatFromSlot(slot.itemId);
+          const def = ITEM_MAP[slot.itemId];
+          if (def?.equippable) {
+            this.equipFromSlot(slot.itemId);
+          } else {
+            this.eatFromSlot(slot.itemId);
+          }
           this.selectedGridSlot = -1;
           this.refreshGrid();
           return true;
@@ -258,13 +298,126 @@ export class InventoryUI {
       this.gridSlots.push(slot);
     }
 
-    this.selectedHint = this.scene.add
-      .text(PANEL_X + PANEL_W / 2, PANEL_Y + PANEL_H - 10, "", {
-        fontSize: "11px", color: "#aaaaaa",
+    // ── Action buttons ──
+    const btnY    = PANEL_Y + PANEL_H - ACTION_H - 26;
+    const btnW    = (PANEL_W - 20 - 6) / 2;   // two buttons with 6px gap, 10px padding each side
+    const btnX1   = PANEL_X + 10;
+    const btnX2   = btnX1 + btnW + 6;
+
+    this.destroyBg = this.scene.add
+      .rectangle(btnX1, btnY, btnW, ACTION_H, 0x4a1010, 1)
+      .setOrigin(0, 0).setScrollFactor(0).setDepth(depth + 1)
+      .setStrokeStyle(1, 0x992222)
+      .setInteractive({ useHandCursor: true });
+    this.destroyBg.on("pointerdown", () => this.onDestroyClick());
+    this.destroyBg.on("pointerover",  () => this.destroyBg.setFillStyle(0x6a1818));
+    this.destroyBg.on("pointerout",   () => this.destroyBg.setFillStyle(0x4a1010));
+
+    this.destroyLabel = this.scene.add
+      .text(btnX1 + btnW / 2, btnY + ACTION_H / 2, "🗑 ZNISZCZ", {
+        fontSize: "10px", color: "#ff6666", fontStyle: "bold",
+      })
+      .setOrigin(0.5).setScrollFactor(0).setDepth(depth + 2);
+
+    this.dropBg = this.scene.add
+      .rectangle(btnX2, btnY, btnW, ACTION_H, 0x101a2a, 1)
+      .setOrigin(0, 0).setScrollFactor(0).setDepth(depth + 1)
+      .setStrokeStyle(1, 0x223344);
+
+    this.dropLabel = this.scene.add
+      .text(btnX2 + btnW / 2, btnY + ACTION_H / 2, "📦 WYRZUĆ", {
+        fontSize: "10px", color: "#334455", fontStyle: "bold",
+      })
+      .setOrigin(0.5).setScrollFactor(0).setDepth(depth + 2);
+
+    this.buildInfoModal(depth);
+    this.setPanelVisible(false);
+  }
+
+  private buildInfoModal(depth: number) {
+    const cx = INFO_X + INFO_W / 2;
+
+    this.infoBg = this.scene.add
+      .rectangle(INFO_X, INFO_Y, INFO_W, INFO_H, 0x0d0e20, 0.97)
+      .setOrigin(0, 0).setScrollFactor(0).setDepth(depth)
+      .setStrokeStyle(1, 0x22233e);
+
+    this.infoBorder = this.scene.add
+      .rectangle(INFO_X, INFO_Y, INFO_W, 2, 0xff8c00, 1)
+      .setOrigin(0, 0).setScrollFactor(0).setDepth(depth + 1);
+
+    this.infoTitle = this.scene.add
+      .text(cx, INFO_Y + 14, "ITEM INFO", {
+        fontSize: "9px", color: "#46465b", fontStyle: "bold",
+        fontFamily: "'Space Grotesk', monospace", letterSpacing: 3,
+      })
+      .setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(depth + 1);
+
+    // Icon circle
+    this.infoIconBg = this.scene.add.graphics()
+      .setScrollFactor(0).setDepth(depth + 1);
+
+    this.infoIconLabel = this.scene.add
+      .text(cx, INFO_Y + 64, "", {
+        fontSize: "32px", color: "#ffffff",
+      })
+      .setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(depth + 2);
+
+    this.infoName = this.scene.add
+      .text(cx, INFO_Y + 108, "", {
+        fontSize: "13px", color: "#e4e3fe", fontStyle: "bold",
+        fontFamily: "'Space Grotesk', monospace", align: "center",
+        wordWrap: { width: INFO_W - 16 },
+      })
+      .setOrigin(0.5, 0).setScrollFactor(0).setDepth(depth + 1);
+
+    this.infoRarity = this.scene.add
+      .text(cx, INFO_Y + 130, "", {
+        fontSize: "8px", color: "#ffffff", fontStyle: "bold",
+        letterSpacing: 2,
+      })
+      .setOrigin(0.5, 0).setScrollFactor(0).setDepth(depth + 1);
+
+    this.infoStat = this.scene.add
+      .text(INFO_X + 12, INFO_Y + 150, "", {
+        fontSize: "9px", color: "#46465b", fontStyle: "bold", letterSpacing: 1,
+      })
+      .setOrigin(0, 0).setScrollFactor(0).setDepth(depth + 1);
+
+    this.infoStatVal = this.scene.add
+      .text(INFO_X + INFO_W - 12, INFO_Y + 150, "", {
+        fontSize: "18px", color: "#ff8c00", fontStyle: "bold",
+        fontFamily: "'Space Grotesk', monospace",
+      })
+      .setOrigin(1, 0).setScrollFactor(0).setDepth(depth + 1);
+
+    this.infoSep = this.scene.add.graphics()
+      .setScrollFactor(0).setDepth(depth + 1);
+
+    this.infoCompHeader = this.scene.add
+      .text(INFO_X + 12, INFO_Y + 182, "VS EQUIPPED", {
+        fontSize: "8px", color: "#46465b", fontStyle: "bold", letterSpacing: 2,
+      })
+      .setOrigin(0, 0).setScrollFactor(0).setDepth(depth + 1);
+
+    this.infoCompName = this.scene.add
+      .text(INFO_X + 12, INFO_Y + 196, "", {
+        fontSize: "10px", color: "#888899",
+      })
+      .setOrigin(0, 0).setScrollFactor(0).setDepth(depth + 1);
+
+    this.infoCompDiff = this.scene.add
+      .text(cx, INFO_Y + 214, "", {
+        fontSize: "20px", color: "#44ff88", fontStyle: "bold",
+        fontFamily: "'Space Grotesk', monospace",
+      })
+      .setOrigin(0.5, 0).setScrollFactor(0).setDepth(depth + 1);
+
+    this.infoActionHint = this.scene.add
+      .text(cx, INFO_Y + INFO_H - 12, "", {
+        fontSize: "10px", color: "#ff8c00", fontStyle: "bold",
       })
       .setOrigin(0.5, 1).setScrollFactor(0).setDepth(depth + 1);
-
-    this.setPanelVisible(false);
   }
 
   private togglePanel() {
@@ -277,9 +430,47 @@ export class InventoryUI {
     this.panelBg.setVisible(v);
     this.panelTopBorder.setVisible(v);
     this.panelTitle.setVisible(v);
-    this.selectedHint.setVisible(v);
+    this.destroyBg.setVisible(v);
+    this.destroyLabel.setVisible(v);
+    this.dropBg.setVisible(v);
+    this.dropLabel.setVisible(v);
     for (const s of this.gridSlots) s.setVisible(v);
-    if (!v) this.selectedGridSlot = -1;
+    if (!v) {
+      this.selectedGridSlot = -1;
+      this.setInfoVisible(false);
+    }
+  }
+
+  private setInfoVisible(v: boolean) {
+    this.infoBg.setVisible(v);
+    this.infoBorder.setVisible(v);
+    this.infoTitle.setVisible(v);
+    this.infoIconBg.setVisible(v);
+    this.infoIconLabel.setVisible(v);
+    this.infoName.setVisible(v);
+    this.infoRarity.setVisible(v);
+    this.infoStat.setVisible(v);
+    this.infoStatVal.setVisible(v);
+    this.infoSep.setVisible(v);
+    this.infoCompHeader.setVisible(v);
+    this.infoCompName.setVisible(v);
+    this.infoCompDiff.setVisible(v);
+    this.infoActionHint.setVisible(v);
+  }
+
+  private onDestroyClick() {
+    if (this.selectedGridSlot < 0) return;
+    const slot = this.gridSlots[this.selectedGridSlot];
+    if (!slot.itemId) return;
+    const itemId = slot.itemId;
+    const count  = this.inventory.get(itemId) ?? 0;
+    if (count <= 0) return;
+    // Remove one from local inventory
+    if (count === 1) this.inventory.delete(itemId);
+    else this.inventory.set(itemId, count - 1);
+    this.selectedGridSlot = -1;
+    if (this.room) this.room.send("destroy_item", { itemId });
+    this.refresh();
   }
 
   private onGridClick(i: number) {
@@ -288,8 +479,13 @@ export class InventoryUI {
     if (!slot.itemId) return;
 
     if (this.selectedGridSlot === i) {
-      // Second click on same slot → eat
-      this.eatFromSlot(slot.itemId);
+      // Second click on same slot → action
+      const def = ITEM_MAP[slot.itemId];
+      if (def?.equippable) {
+        this.equipFromSlot(slot.itemId);
+      } else {
+        this.eatFromSlot(slot.itemId);
+      }
       this.selectedGridSlot = -1;
     } else {
       this.selectedGridSlot = i;
@@ -307,6 +503,16 @@ export class InventoryUI {
     this.refresh();
   }
 
+  private equipFromSlot(itemId: string) {
+    const def = ITEM_MAP[itemId];
+    if (!def?.equippable) return;
+    const count = this.inventory.get(itemId) ?? 0;
+    if (count <= 0) return;
+    this.inventory.set(itemId, count - 1);
+    if (this.room) this.room.send("equip_item", { itemId });
+    this.refresh();
+  }
+
   private refreshGrid() {
     for (let i = 0; i < this.gridSlots.length; i++) {
       const def   = ITEM_DEFS[i] ?? null;
@@ -318,15 +524,85 @@ export class InventoryUI {
     if (sel >= 0) {
       const slot = this.gridSlots[sel];
       const def  = slot.itemId ? ITEM_MAP[slot.itemId] : null;
-      if (def?.eatable) {
-        this.selectedHint.setText(`[E] Zjedz ${def.name}`);
-      } else if (def) {
-        this.selectedHint.setText(def.name + " — nie można zjeść");
-      } else {
-        this.selectedHint.setText("");
-      }
+      this.updateInfoModal(def);
     } else {
-      this.selectedHint.setText("Kliknij slot aby wybrać");
+      this.setInfoVisible(false);
+    }
+  }
+
+  private updateInfoModal(def: ItemDef | null) {
+    if (!def) { this.setInfoVisible(false); return; }
+    this.setInfoVisible(true);
+
+    const cx = INFO_X + INFO_W / 2;
+    const rarityColor = def.rarity === "rare" ? "#FFD700"
+      : def.rarity === "uncommon" ? "#44ff88"
+      : def.equippable ? "#ffffff" : "#aaaaaa";
+
+    // Icon circle
+    const iconY = INFO_Y + 64;
+    this.infoIconBg.clear();
+    const col = Phaser.Display.Color.HexStringToColor(def.color);
+    this.infoIconBg.fillStyle(col.color, 0.25);
+    this.infoIconBg.fillCircle(cx, iconY, 36);
+    this.infoIconBg.lineStyle(2, col.color, 0.7);
+    this.infoIconBg.strokeCircle(cx, iconY, 36);
+    this.infoIconLabel.setPosition(cx, iconY).setText(def.symbol).setStyle({ color: def.color });
+
+    // Name & rarity
+    this.infoName.setText(def.name).setStyle({ color: rarityColor });
+    this.infoRarity.setText(def.rarity ? def.rarity.toUpperCase() : "")
+      .setStyle({ color: rarityColor });
+
+    // Stat line
+    this.infoSep.clear();
+    this.infoSep.lineStyle(1, 0x22233e, 1);
+    this.infoSep.lineBetween(INFO_X + 12, INFO_Y + 176, INFO_X + INFO_W - 12, INFO_Y + 176);
+
+    if (def.equippable) {
+      const isAtk = (def.attackBonus ?? 0) > 0;
+      this.infoStat.setText(isAtk ? "ATAK" : "OBRONA");
+      this.infoStatVal
+        .setText(`+${isAtk ? def.attackBonus : def.defenseBonus}`)
+        .setStyle({ color: isAtk ? "#ff8c00" : "#00e3fd" });
+
+      // Comparison
+      const equippedId  = def.equipSlot ? this.equipment[def.equipSlot] : undefined;
+      const equippedDef = equippedId ? ITEM_MAP[equippedId] : null;
+      this.infoCompHeader.setVisible(true);
+      if (equippedDef) {
+        const newVal      = def.attackBonus ?? def.defenseBonus ?? 0;
+        const equippedVal = equippedDef.attackBonus ?? equippedDef.defenseBonus ?? 0;
+        const diff        = newVal - equippedVal;
+        const arrow       = diff > 0 ? "▲" : diff < 0 ? "▼" : "—";
+        const diffColor   = diff > 0 ? "#44ff88" : diff < 0 ? "#ff6666" : "#aaaaaa";
+        this.infoCompName.setText(equippedDef.name).setVisible(true);
+        this.infoCompDiff
+          .setText(`${arrow} ${diff > 0 ? "+" : ""}${diff}`)
+          .setStyle({ color: diffColor, fontSize: "20px" })
+          .setVisible(true);
+      } else {
+        this.infoCompName.setText("(brak)").setStyle({ color: "#334455" }).setVisible(true);
+        this.infoCompDiff.setText("NOWY SLOT").setStyle({ color: "#44ff88", fontSize: "12px" }).setVisible(true);
+      }
+      this.infoActionHint.setText("[E] Ekwipuj").setStyle({ color: "#ff8c00" });
+
+    } else if (def.eatable) {
+      this.infoStat.setText("JEDZENIE");
+      this.infoStatVal.setText(`+${def.id === "mushroom" ? 15 : def.id === "berries" ? 20 : def.id === "raw_meat" ? 10 : def.id === "cooked_meat" ? 40 : 30} GŁÓD`)
+        .setStyle({ color: "#fb923c" });
+      this.infoCompHeader.setVisible(false);
+      this.infoCompName.setVisible(false);
+      this.infoCompDiff.setVisible(false);
+      this.infoActionHint.setText("[E] Zjedz").setStyle({ color: "#fb923c" });
+
+    } else {
+      this.infoStat.setText("MATERIAŁ");
+      this.infoStatVal.setText("").setStyle({ color: "#aaaaaa" });
+      this.infoCompHeader.setVisible(false);
+      this.infoCompName.setVisible(false);
+      this.infoCompDiff.setVisible(false);
+      this.infoActionHint.setText("").setStyle({ color: "#aaaaaa" });
     }
   }
 
