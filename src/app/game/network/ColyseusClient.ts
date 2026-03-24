@@ -13,13 +13,24 @@ let room: Room | null = null;
 export async function connectRoom(token?: string, nickname?: string): Promise<Room> {
   if (room) return room;
 
+  // Guest ID: persists within same browser tab session (sessionStorage survives F5,
+  // is cleared when the tab/browser is closed — that's intentional for guests).
+  let guestId: string | undefined;
+  if (!token) {
+    guestId = sessionStorage.getItem("guestId") ?? undefined;
+    if (!guestId) {
+      guestId = crypto.randomUUID();
+      sessionStorage.setItem("guestId", guestId);
+    }
+  }
+
   // colyseus.js@0.16 expects { room: { name, roomId, processId }, sessionId }
   // colyseus@0.17 server returns flat { name, roomId, sessionId, processId }
   // We call matchmake ourselves and reformat before passing to consumeSeatReservation.
   const raw = await fetch(`${httpUrl}/matchmake/joinOrCreate/game_room`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ token, nickname }),
+    body: JSON.stringify({ token, nickname, guestId }),
   }).then((r) => r.json());
 
   const response = {

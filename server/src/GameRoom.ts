@@ -1,7 +1,7 @@
 import { Room, Client, type RoomOptions } from "@colyseus/core";
 import { Schema, MapSchema, ArraySchema, type } from "@colyseus/schema";
 import { verifyToken } from "@clerk/backend";
-import { loadPlayer, savePlayer, loadWorldSeed, saveWorldSeed } from "./db.js";
+import { loadPlayer, savePlayer, deletePlayer, loadWorldSeed, saveWorldSeed } from "./db.js";
 import { FOOD_CONFIG } from "./foodConfig.js";
 
 interface GameRoomOptions extends RoomOptions {
@@ -308,8 +308,55 @@ export class GameRoom extends Room<GameRoomOptions> {
         return;
       }
     } else {
-      player.userId = client.sessionId;
-      console.log(`[GameRoom] ${player.nickname} joined as guest (${client.sessionId})`);
+      const guestId = (options as any).guestId as string | undefined;
+      const userId  = guestId ? `guest_${guestId}` : client.sessionId;
+      player.userId = userId;
+
+      // Stale session detection for guests (fast F5 where old WS still open)
+      let staleSessionId: string | null = null;
+      this.state.players.forEach((p, sid) => {
+        if (p.userId === userId) staleSessionId = sid;
+      });
+      if (staleSessionId) {
+        const stale = this.state.players.get(staleSessionId)!;
+        player.x = stale.x; player.y = stale.y;
+        player.hp = stale.hp; player.maxHp = stale.maxHp;
+        player.hunger = stale.hunger; player.sanity = stale.sanity;
+        player.attack = stale.attack; player.defense = stale.defense;
+        player.activeSlot = stale.activeSlot;
+        stale.inventory.forEach((item) => player.inventory.push(item));
+        stale.equipment.forEach((itemId, slot) => player.equipment.set(slot, itemId));
+        const staleFog = this.playerFog.get(staleSessionId) ?? [];
+        this.playerFog.set(client.sessionId, staleFog);
+        this.playerFog.delete(staleSessionId);
+        this.state.players.delete(staleSessionId);
+        this.broadcast("player_remove", { sessionId: staleSessionId }, { except: client });
+        console.log(`[GameRoom] Guest took over stale session ${staleSessionId}`);
+      } else if (guestId) {
+        // Fresh join — try to load from DB
+        const saved = await loadPlayer(userId, player.nickname);
+        if (saved) {
+          player.x = saved.x; player.y = saved.y;
+          player.hp = saved.hp; player.maxHp = saved.max_hp;
+          player.hunger = saved.hunger; player.sanity = saved.sanity;
+          player.attack = saved.attack; player.defense = saved.defense;
+          if (Array.isArray(saved.inventory)) {
+            saved.inventory.forEach((item) => player.inventory.push(item));
+          }
+          if (saved.equipment && typeof saved.equipment === "object") {
+            Object.entries(saved.equipment).forEach(([slot, itemId]) => {
+              player.equipment.set(slot, itemId as string);
+            });
+          }
+          player.activeSlot = saved.active_slot;
+          this.playerFog.set(client.sessionId, Array.isArray(saved.fog) ? saved.fog : []);
+          console.log(`[GameRoom] Guest ${userId} restored from DB`);
+        } else {
+          this.playerFog.set(client.sessionId, []);
+          console.log(`[GameRoom] ${player.nickname} joined as new guest (${userId})`);
+        }
+      }
+      // No guestId at all = anonymous fallback (old behaviour, no persistence)
     }
 
     this.state.players.set(client.sessionId, player);
@@ -763,6 +810,8 @@ export class GameRoom extends Room<GameRoomOptions> {
         // Restore fog — authenticated get their saved tiles, guests get empty
         const fog = isAuthenticated ? (this.playerFog.get(client.sessionId) ?? []) : [];
         client.send("fog_load", fog);
+        // Restore inventory — send flat array (each item repeated qty times)
+        client.send("inventory_load", Array.from(self.inventory));
       }
     });
 
@@ -881,6 +930,11 @@ export class GameRoom extends Room<GameRoomOptions> {
         client.send("harvest_reward", { drops });
         console.log(`[GameRoom] ${player?.nickname ?? client.sessionId} harvested ${data.id} → ${isMushr ? "mushroom" : "berries"}`);
       }
+      // Persist inventory immediately after every harvest
+      if (player) {
+        const fog = this.playerFog.get(client.sessionId) ?? [];
+        savePlayer(player, fog).catch((e) => console.warn("[DB] harvest save error:", e));
+      }
     });
 
     this.onMessage("eat", (client, data: { itemId: string }) => {
@@ -896,6 +950,9 @@ export class GameRoom extends Room<GameRoomOptions> {
         player.hp = Math.max(0, Math.min(player.maxHp, player.hp + food.hpRestore));
       this.sendStatsToPlayers();
       console.log(`[GameRoom] ${player.nickname} ate ${data.itemId} (hunger: ${player.hunger.toFixed(0)}, hp: ${player.hp})`);
+      // Persist inventory immediately after eat
+      const fog = this.playerFog.get(client.sessionId) ?? [];
+      savePlayer(player, fog).catch((e) => console.warn("[DB] eat save error:", e));
     });
 
     this.onMessage("attack_enemy", (client, data: { enemyId: string }) => {

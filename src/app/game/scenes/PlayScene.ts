@@ -10,6 +10,7 @@ import {
 } from "../animations/toolAnimations";
 import { isForestTile, treeAtChunk, rockAtChunk, foodAtChunk, TILE_SIZE, TREE_STEP, ROCK_STEP, FOOD_STEP } from "../world/MapGenerator";
 import { getRoom } from "../network/ColyseusClient";
+import { InventoryUI } from "../ui/InventoryUI";
 
 type Direction = "down" | "up" | "left" | "right";
 
@@ -148,7 +149,7 @@ export class PlayScene extends Scene {
 
   // Inventory
   private inventory = new Map<string, number>();
-  private hudTexts  = new Map<string, Phaser.GameObjects.Text>();
+  private invUI!: InventoryUI;
 
   constructor() {
     super({ key: "PlayScene" });
@@ -266,8 +267,8 @@ export class PlayScene extends Scene {
       .text(792, 8, this.room?.sessionId ?? "—", { fontSize: "10px", color: "#aaaaaa", backgroundColor: "#00000066", padding: { x: 4, y: 2 } })
       .setOrigin(1, 0).setScrollFactor(0).setDepth(20);
 
-    // ── Inventory HUD ───────────────────────────────────────────────────────
-    this.initInventoryHud();
+    // ── Inventory UI ────────────────────────────────────────────────────────
+    this.invUI = new InventoryUI(this, this.inventory, this.room);
 
     // ── Multiplayer handlers ────────────────────────────────────────────────
     if (this.room) this.setupMessageHandlers(this.room);
@@ -556,44 +557,18 @@ export class PlayScene extends Scene {
     room.onMessage("stats_update", (data: { hp: number; maxHp: number; hunger: number; sanity: number; attack: number; defense: number; nickname: string; isNight: boolean }) => {
       window.dispatchEvent(new CustomEvent("gameStats", { detail: data }));
     });
+
+    room.onMessage("inventory_load", (items: string[]) => {
+      // Convert flat array ["wood","wood","stone"] → Map {wood:2, stone:1}
+      this.inventory.clear();
+      for (const item of items) {
+        this.inventory.set(item, (this.inventory.get(item) ?? 0) + 1);
+      }
+      this.invUI.refresh();
+    });
   }
 
   // ── Inventory ─────────────────────────────────────────────────────────────
-
-  private initInventoryHud() {
-    const ITEMS: Array<{ key: string; label: string; color: string }> = [
-      { key: "wood",        label: "Wood",     color: "#c8a46e" },
-      { key: "stone",       label: "Stone",    color: "#aaaaaa" },
-      { key: "mushroom",    label: "Mush",     color: "#88cc44" },
-      { key: "berries",     label: "Berries",  color: "#ee7788" },
-      { key: "raw_meat",    label: "Meat",     color: "#e07050" },
-      { key: "cooked_meat", label: "C.Meat",   color: "#e09040" },
-    ];
-    const slotW  = 80;
-    const totalW = ITEMS.length * slotW + (ITEMS.length - 1) * 8;
-    let x = (800 - totalW) / 2;
-
-    for (const { key, label, color } of ITEMS) {
-      const t = this.add.text(x + slotW / 2, 576, `${label}: 0`, {
-        fontSize: "13px",
-        color,
-        backgroundColor: "#000000aa",
-        padding: { x: 8, y: 5 },
-        stroke: "#000000",
-        strokeThickness: 1,
-      }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(20);
-      this.hudTexts.set(key, t);
-      x += slotW + 8;
-    }
-  }
-
-  private updateInventoryHud() {
-    this.hudTexts.forEach((text, key) => {
-      const count = this.inventory.get(key) ?? 0;
-      const label = key.charAt(0).toUpperCase() + key.slice(1);
-      text.setText(`${label}: ${count}`);
-    });
-  }
 
   private addItems(drops: Array<{ item: string; qty: number }>) {
     const parts: string[] = [];
@@ -601,7 +576,7 @@ export class PlayScene extends Scene {
       this.inventory.set(item, (this.inventory.get(item) ?? 0) + qty);
       parts.push(`+${qty} ${item.charAt(0).toUpperCase() + item.slice(1)}`);
     }
-    this.updateInventoryHud();
+    this.invUI.refresh();
     if (parts.length) this.showPickupText(this.px, this.py - 50, parts.join("  "));
   }
 
@@ -1110,8 +1085,10 @@ export class PlayScene extends Scene {
     const dt = delta / 1000;
 
     // Action keys
-    const eJustDown     = Phaser.Input.Keyboard.JustDown(this.actionKeys["E"]);
-    const fJustDown     = Phaser.Input.Keyboard.JustDown(this.actionKeys["F"]);
+    const eJustDown        = Phaser.Input.Keyboard.JustDown(this.actionKeys["E"]);
+    const fJustDown        = Phaser.Input.Keyboard.JustDown(this.actionKeys["F"]);
+    // Inventory UI handles I/1-8/E; must run before harvest to consume E if panel open
+    const eConsumedByUI = this.invUI.handleInput();
     const spaceJustDown = Phaser.Input.Keyboard.JustDown(this.actionKeys["SPACE"]);
     if (spaceJustDown) {
       // Find closest enemy in facing direction ≤64px and send attack
@@ -1260,8 +1237,8 @@ export class PlayScene extends Scene {
       sprite.setVisible(fn.isAlive && (dx * dx + dy * dy) <= visionPxSq);
     });
 
-    // E key: harvest tree/rock/food adjacent to player
-    if (eJustDown && !this.isActionPlaying) {
+    // E key: harvest tree/rock/food adjacent to player (skip if panel consumed E)
+    if (eJustDown && !this.isActionPlaying && !eConsumedByUI) {
       const harvestId = this.findAdjacentResource(tileX, tileY) ?? this.findAdjacentFood();
       if (harvestId) {
         // Immediate local update so player can't double-harvest
@@ -1290,19 +1267,13 @@ export class PlayScene extends Scene {
       }
     }
 
-    // F key: eat first available food from inventory
+    // F key: eat first available food
     if (fJustDown) {
-      const eatOrder = ["cooked_meat", "cooked_mushroom", "mushroom", "berries", "raw_meat"];
-      for (const itemId of eatOrder) {
-        if ((this.inventory.get(itemId) ?? 0) > 0) {
-          this.inventory.set(itemId, (this.inventory.get(itemId) ?? 0) - 1);
-          this.updateInventoryHud();
-          this.showPickupText(this.px, this.py - 50, `Zjedono: ${itemId.replace("_", " ")}`);
-          if (this.room) this.room.send("eat", { itemId });
-          break;
-        }
-      }
+      this.invUI.eatFirst((itemId) => {
+        this.showPickupText(this.px, this.py - 50, `Zjedono: ${itemId.replace("_", " ")}`);
+      });
     }
+    if (eConsumedByUI) return;
 
     // Colyseus send (throttled)
     if (this.room && time - this.lastSentAt > SEND_INTERVAL) {

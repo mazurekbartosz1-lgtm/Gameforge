@@ -747,6 +747,38 @@ Sprawdź PLAN.md pod Wieczór 25.
 
 ---
 
+## Session 24 — 2026-03-24 (Session 12)
+
+### What was done
+- **Wieczór 25 COMPLETE ✅** — Inventory UI: hotbar 8 slotów + panel 4×5, zastąpienie starych text HUD
+- `src/app/game/ui/itemConfig.ts` (nowy) — `ITEM_DEFS` + `ITEM_MAP` dla wszystkich itemów (eatable bool, symbol, color)
+- `src/app/game/ui/InventoryUI.ts` (nowy) — klasa Phaser: hotbar z numerkami 1–8 w górnym lewym rogu, panel 4×5 toggle [I], kliknięcie/E do jedzenia, klawisze 1–8 do aktywnego slotu, F key przez `eatFirst()`
+- `PlayScene.ts` — usunięto stary `initInventoryHud`/`hudTexts`/`updateInventoryHud`, dodano `invUI: InventoryUI`, `addItems()` wywołuje `invUI.refresh()`
+- **Inventory persistence** — inwentarz zapisywany w Supabase (serwer już trzymał `player.inventory`, brakowało tylko `inventory_load` przy reconnect)
+- `GameRoom.ts` `request_players` — dodano wysyłanie `inventory_load` (flat array itemów)
+- `GameRoom.ts` harvest/eat — `savePlayer` fire-and-forget po każdej akcji
+- `PlayScene.ts` — handler `inventory_load` odbudowuje `Map<string,number>` i odświeża UI
+- **Gość z persistencją** — `ColyseusClient.ts` generuje `guestId` w `sessionStorage`, wysyła do serwera
+- `GameRoom.ts` — gość z `guestId` ma `userId = "guest_xxx"`, pełna persistencja jak zalogowany
+- Stale session detection dla gości (F5), fog/inventory/position restore
+- Zamknięcie przeglądarki → nowy `guestId` z sessionStorage → świeży start; stary rekord w DB (orphaned)
+
+### Decisions made
+- **Brak timer-delete dla gości** — początkowo 10s timer kasował rekord po `onLeave`, ale `setTimeout` przeżywał dispose pokoju i kasował dane aktywnego gracza w nowym pokoju. Usunięto timer — rekordy gości pozostają w DB i są "kasowane" przez utratę `guestId` (sessionStorage cleared na close). Ręczne czyszczenie: `DELETE FROM players WHERE clerk_id LIKE 'guest_%' AND updated_at < now() - interval '7 days'`
+- **`sessionStorage` zamiast `localStorage`** — przeżywa F5, kasowane przy zamknięciu karty/przeglądarki = naturalne "wygaśnięcie sesji gościa"
+- Inventory format w DB: flat `TEXT[]` — każdy item powtórzony tyle razy ile qty (np. `["wood","wood","stone"]`)
+- `deletePlayer` pozostaje w `db.ts` jako utility do przyszłego cleanup job
+
+### Problems encountered
+- 10s `setTimeout` w `onLeave` przeżywał room dispose → kasował rekord podczas gdy gracz był już w nowym pokoju. Logi: `[GameRoom] Guest session expired` + `[DB] Deleted player record` podczas aktywnej gry
+- Fix: całkowite usunięcie timer-delete; `sessionStorage` cleanly handles session expiry
+
+### Next step
+**Wieczór 26** — Enemy drop system (loot table, equippable items, pickup mechanic).
+Sprawdź PLAN.md pod Wieczór 26.
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

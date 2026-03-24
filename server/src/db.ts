@@ -102,8 +102,21 @@ export async function saveWorldSeed(seed: number): Promise<void> {
 
 // ─── Player persistence ───────────────────────────────────────────────────────
 
+export async function deletePlayer(userId: string): Promise<void> {
+  try {
+    const { error } = await supabaseAdmin
+      .from("players")
+      .delete()
+      .eq("clerk_id", userId);
+    if (error) console.warn(`[DB] deletePlayer error for ${userId}:`, error.message);
+    else console.log(`[DB] Deleted player record: ${userId}`);
+  } catch (err) {
+    console.warn("[DB] deletePlayer exception:", err);
+  }
+}
+
 export async function savePlayer(player: PlayerState, fog: string[] = []): Promise<void> {
-  // Only save authenticated players (guests have userId === sessionId)
+  // Skip anonymous players (no userId or userId === sessionId — old guest fallback)
   if (!player.userId || player.userId === player.sessionId) return;
 
   try {
