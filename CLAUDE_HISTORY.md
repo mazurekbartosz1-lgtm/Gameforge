@@ -943,6 +943,30 @@ Sprawdź PLAN.md pod Wieczór 26.
 
 ---
 
+## Session 31 — 2026-03-25 (Session 17)
+
+### What was done
+- **Production 404 fix** — `/api/groups` i `/api/groups/join` zwracały 404 na Vercel bo brak rekordu w tabeli `players` (tworzony dopiero przy pierwszym wejściu do gry przez Colyseus). Fix: `getOrCreatePlayerId()` — jeśli gracz nie istnieje, tworzy rekord automatycznie. Dodatkowo zabezpieczono `src/lib/supabase.ts` przed crashem build-time (`!` → `?? ""`).
+- **Single active session dla zalogowanych** — mechanizm jak WhatsApp Web: jedna aktywna sesja na zalogowanego użytkownika
+  - `server/src/GameRoom.ts` — `pendingTakeovers` Map; w `onJoin` wykrywa czy stara sesja ma aktywny WebSocket (`this.clients.find`): jeśli tak → `session_conflict` do nowego klienta + `session_incoming` do starego + `return` (brak dodania do state); handlery `confirm_takeover` (kickuje stary client, przenosi state) i `decline_takeover` (nowy client wychodzi); `session_ready` wysyłany po poprawnym join
+  - `src/app/game/PhaserGame.tsx` — React state `connecting|conflict|playing`; czeka na `session_ready` lub `session_conflict` przed startem Phasera; modal "Konflikt sesji" z przyciskami PRZEJMIJ / ANULUJ
+  - `src/app/game/scenes/PlayScene.ts` — handler `session_taken_over`: freeze fizyki, overlay Phaser z info + przycisk powrotu do menu
+
+### Decisions made
+- Rozróżnienie F5 vs drugi tab: `this.clients.find(c => c.sessionId === staleSessionId)` — jeśli stary client jest w `this.clients`, WebSocket żyje → prawdziwy konflikt; jeśli nie ma → F5 auto-takeover (stare zachowanie bez zmian)
+- `session_ready` jako sygnał do startu Phasera — niezawodne, nie oparte na timeout
+- Pending client nie jest dodawany do `state.players` do czasu potwierdzenia — brak ghost playerów w grze
+- Stan gracza kopiowany z aktywnej sesji (nie z DB) — najaktualniejsze dane
+
+### Problems encountered
+- Supabase `SUPABASE_SERVICE_ROLE_KEY` na Vercel był skopiowany niepełny — stąd oryginalne 404 (RLS blokował wszystkie zapytania anonimowym kluczem)
+
+### Next step
+**Single active session dla gości** — ten sam mechanizm w obrębie jednej przeglądarki (oparty o `sessionStorage` / `guestId`).
+Potem: **Wieczór 33** — Role użytkowników (guest vs verified vs group creator).
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,
