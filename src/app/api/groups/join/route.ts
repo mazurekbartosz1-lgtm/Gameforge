@@ -2,13 +2,21 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 
-async function getPlayerIdByClerk(clerkId: string): Promise<string | null> {
-  const { data } = await supabaseAdmin
+async function getOrCreatePlayerId(clerkId: string): Promise<string | null> {
+  const { data: existing } = await supabaseAdmin
     .from("players")
     .select("id")
     .eq("clerk_id", clerkId)
     .maybeSingle();
-  return data?.id ?? null;
+  if (existing) return existing.id;
+
+  const { data: created, error } = await supabaseAdmin
+    .from("players")
+    .insert({ clerk_id: clerkId, nickname: clerkId, x: 0, y: 0 })
+    .select("id")
+    .single();
+  if (error) { console.warn("[groups/join] insert player error:", error.message); return null; }
+  return created.id;
 }
 
 // POST /api/groups/join — join a group by code
@@ -16,7 +24,7 @@ export async function POST(req: Request) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const playerId = await getPlayerIdByClerk(userId);
+  const playerId = await getOrCreatePlayerId(userId);
   if (!playerId) return NextResponse.json({ error: "Player not found" }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));
