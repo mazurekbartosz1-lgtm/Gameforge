@@ -4,6 +4,7 @@ import { verifyToken } from "@clerk/backend";
 import { loadPlayer, savePlayer, deletePlayer, loadWorldSeed, saveWorldSeed, loadDeadResources, saveDeadResources, loadRoomState, saveRoomState, insertRoomEvent } from "./db.js";
 import { FOOD_CONFIG } from "./foodConfig.js";
 import { LOOT_TABLE, rollDrop } from "./lootConfig.js";
+import { MONSTER_CONFIG } from "./monsterConfig.js";
 
 interface GameRoomOptions extends RoomOptions {
   state: WorldState;
@@ -54,6 +55,7 @@ export class FoodNode extends Schema {
 export class EnemyState extends Schema {
   @type("string") id: string = "";
   @type("string") type: string = "";
+  @type("string") configId: string = "hunter";
   @type("float32") x: number = 0;
   @type("float32") y: number = 0;
   @type("int16") hp: number = 20;
@@ -712,15 +714,17 @@ export class GameRoom extends Room<GameRoomOptions> {
     }
   }
 
-  private spawnSingleEnemy(id: string, x: number, y: number) {
+  private spawnSingleEnemy(id: string, x: number, y: number, configId = "hunter") {
     if (this.state.enemies.has(id)) return;
+    const config = MONSTER_CONFIG[configId] ?? MONSTER_CONFIG["hunter"];
     const enemy = new EnemyState();
-    enemy.id     = id;
-    enemy.type   = "hunter";
-    enemy.x      = x;
-    enemy.y      = y;
-    enemy.hp     = ENEMY_HP;
-    enemy.maxHp  = ENEMY_HP;
+    enemy.id      = id;
+    enemy.type    = "hunter";
+    enemy.configId = config.id;
+    enemy.x       = x;
+    enemy.y       = y;
+    enemy.hp      = config.hp;
+    enemy.maxHp   = config.maxHp;
     enemy.isAlive = true;
     enemy.animKey = "idle_down";
     this.state.enemies.set(id, enemy);
@@ -768,9 +772,11 @@ export class GameRoom extends Room<GameRoomOptions> {
           const attackedPlayer = this.state.players.get(nearest.sessionId);
           if (attackedPlayer) {
             const prevHp = attackedPlayer.hp;
-            attackedPlayer.hp = Math.max(0, attackedPlayer.hp - ENEMY_ATTACK_DAMAGE);
+            const config = MONSTER_CONFIG[enemy.configId] ?? MONSTER_CONFIG["hunter"];
+            const dmg = config.damage;
+            attackedPlayer.hp = Math.max(0, attackedPlayer.hp - dmg);
             const attackedClient = this.clients.find(c => c.sessionId === nearest!.sessionId);
-            attackedClient?.send("player_damage", { damage: ENEMY_ATTACK_DAMAGE, hp: attackedPlayer.hp });
+            attackedClient?.send("player_damage", { damage: dmg, hp: attackedPlayer.hp });
             if (prevHp > 0 && attackedPlayer.hp === 0 && !this.deadPlayers.has(attackedPlayer.sessionId)) {
               this.deadPlayers.add(attackedPlayer.sessionId);
               this.broadcastRoomEvent("death", attackedPlayer.nickname, `☠ ${attackedPlayer.nickname} zginął(a) od ataku wroga`);
@@ -904,7 +910,7 @@ export class GameRoom extends Room<GameRoomOptions> {
       }
       // else: blocked by map object — keep current anim (walk/wander), AI will repath
 
-      this.broadcast("enemy_update", { id: enemy.id, x: enemy.x, y: enemy.y, animKey: enemy.animKey });
+      this.broadcast("enemy_update", { id: enemy.id, x: enemy.x, y: enemy.y, animKey: enemy.animKey, configId: enemy.configId, hp: enemy.hp, maxHp: enemy.maxHp });
     });
   }
 

@@ -12,6 +12,7 @@ import { isForestTile, treeAtChunk, rockAtChunk, foodAtChunk, TILE_SIZE, TREE_ST
 import { getRoom } from "../network/ColyseusClient";
 import { InventoryUI } from "../ui/InventoryUI";
 import { ITEM_MAP } from "../ui/itemConfig";
+import { MONSTER_CONFIG } from "../monsterConfig";
 
 type Direction = "down" | "up" | "left" | "right";
 
@@ -27,6 +28,7 @@ interface RemotePlayer {
 
 interface EnemyData {
   id: string;
+  configId: string;
   x: number;
   y: number;
   targetX: number;
@@ -330,10 +332,10 @@ export class PlayScene extends Scene {
     pierce_right: { texture: "hunter_pierce_side", flipX: false },
   };
 
-  private createEnemySprites(x: number, y: number): Map<string, Phaser.GameObjects.Sprite> {
+  private createEnemySprites(x: number, y: number, tint = 0xffffff, scale = 1.0): Map<string, Phaser.GameObjects.Sprite> {
     const sprites = new Map<string, Phaser.GameObjects.Sprite>();
     for (const tex of ["hunter_idle_down", "hunter_idle_up", "hunter_idle_side", "hunter_walk_down", "hunter_walk_up", "hunter_walk_side", "hunter_pierce_down", "hunter_pierce_up", "hunter_pierce_side"]) {
-      const s = this.add.sprite(x, y, tex).setScale(1.5).setDepth(9);
+      const s = this.add.sprite(x, y, tex).setScale(1.5 * scale).setDepth(9).setTint(tint);
       s.setVisible(false);
       sprites.set(tex, s);
     }
@@ -352,12 +354,14 @@ export class PlayScene extends Scene {
     });
   }
 
-  private addEnemy(data: { id: string; x: number; y: number; animKey: string; hp: number; maxHp: number }) {
+  private addEnemy(data: { id: string; configId?: string; x: number; y: number; animKey: string; hp: number; maxHp: number }) {
     if (this.enemies.has(data.id)) return;
-    const sprites = this.createEnemySprites(data.x, data.y);
+    const configId = data.configId ?? "hunter";
+    const config = MONSTER_CONFIG[configId] ?? MONSTER_CONFIG["hunter"];
+    const sprites = this.createEnemySprites(data.x, data.y, config.tint, config.scale);
     const hpBar   = this.add.graphics().setDepth(12);
     const enemy: EnemyData = {
-      id: data.id, x: data.x, y: data.y, targetX: data.x, targetY: data.y,
+      id: data.id, configId, x: data.x, y: data.y, targetX: data.x, targetY: data.y,
       hp: data.hp, maxHp: data.maxHp, currentAnim: data.animKey, sprites, hpBar,
     };
     this.enemies.set(data.id, enemy);
@@ -578,10 +582,10 @@ export class PlayScene extends Scene {
       }
     });
 
-    room.onMessage("enemy_update", (data: { id: string; x: number; y: number; animKey: string }) => {
+    room.onMessage("enemy_update", (data: { id: string; configId?: string; x: number; y: number; animKey: string; hp: number; maxHp: number }) => {
       const enemy = this.enemies.get(data.id);
       if (!enemy) {
-        this.addEnemy({ id: data.id, x: data.x, y: data.y, animKey: data.animKey, hp: 30, maxHp: 30 });
+        this.addEnemy({ id: data.id, configId: data.configId, x: data.x, y: data.y, animKey: data.animKey, hp: data.hp, maxHp: data.maxHp });
         return;
       }
       enemy.targetX = data.x;

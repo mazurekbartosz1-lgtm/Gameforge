@@ -880,7 +880,7 @@ DONE — Vercel prerender fix (`<Suspense>` wokół `PlayerPanel`); `getOrCreate
 
 ## TYDZIEŃ 7 — Visual variants and RuleEngine
 
-### [ ] Wieczór 36: Monster tint system
+### [x] Wieczór 36: Monster tint system
 
 ```
 Implement the MonsterConfig system for creating visual variants of enemies.
@@ -1791,4 +1791,68 @@ Confirm when done and show me what was created.
 
 ---
 
-*End of plan. Total: 58 evenings across 10 weeks.*
+### [ ] Wieczór 59: Global session conflict detection (cross-room)
+
+```
+Currently the session conflict/takeover mechanism only works within a single Colyseus room.
+If a user is in Room A and opens Room B, no conflict is detected. Fix this with a global registry.
+
+SERVER — new file server/src/sessionRegistry.ts:
+
+export interface ActiveSession {
+  client: import("@colyseus/core").Client;
+  sessionId: string;
+  roomId: string;
+  saveAndDisconnect: () => Promise<void>;
+}
+
+export const sessionRegistry = new Map<string, ActiveSession>();
+// key: userId (clerk id or "guest_xxx")
+
+SERVER — server/src/GameRoom.ts:
+
+1. Import sessionRegistry from "./sessionRegistry.js".
+
+2. In onJoin, after userId is determined (both auth + guest blocks):
+   - Check sessionRegistry.get(userId) BEFORE the existing same-room stale check.
+   - If found AND entry.roomId !== this.roomId (cross-room conflict):
+     a. Copy player stats from DB state (not in-memory, since different room).
+     b. Store in pendingTakeovers with crossRoom: true.
+     c. client.send("session_conflict", {}).
+     d. entry.client.send("session_incoming", {}).
+     e. return (don't add to state.players).
+   - If found AND entry.roomId === this.roomId: fall through to existing same-room logic.
+
+3. After a successful join (at the end of onJoin, where session_ready is sent):
+   sessionRegistry.set(userId, {
+     client,
+     sessionId: client.sessionId,
+     roomId: this.roomId,
+     saveAndDisconnect: async () => {
+       const p = this.state.players.get(client.sessionId);
+       if (p) await this._savePlayerState(p);
+       client.leave(4001);
+     }
+   });
+
+4. In confirm_takeover handler:
+   - If pending.crossRoom === true:
+     a. await pending.saveAndDisconnect() — saves old client to DB and kicks them.
+     b. Load fresh player state from DB (same as a normal first join).
+     c. Add player to state.players, send session_ready.
+   - If pending.crossRoom === false: existing same-room behavior (copy in-memory state).
+
+5. In onLeave:
+   - const reg = sessionRegistry.get(userId for this client);
+   - if (reg && reg.sessionId === client.sessionId) sessionRegistry.delete(userId);
+   - This prevents deleting a registry entry that already belongs to the new session.
+
+No frontend changes needed — PhaserGame.tsx and PlayScene.ts already handle
+session_conflict / session_incoming / session_taken_over / session_ready correctly.
+
+Confirm when done and show me what was created.
+```
+
+---
+
+*End of plan. Total: 59 evenings across 10 weeks.*

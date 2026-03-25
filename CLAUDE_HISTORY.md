@@ -999,7 +999,31 @@ Sprawdź PLAN.md pod Wieczór 26.
 - Vercel TypeScript error: `removeAllListeners` w colyseus.js nie przyjmuje argumentów (0 expected, got 1)
 
 ### Next step
-**Wieczór 51** — Roles: guest / verified / group creator (`role` w PlayerState, badge w PlayerPanel, etykiety nad głowami graczy).
+**Wieczór 36** — Monster tint system: `MonsterConfig` interface w `src/shared/monsterConfig.ts`, `configId` w `EnemyState`, tint + scale na spritach wrogów po stronie klienta.
+
+---
+
+## Session 33 — 2026-03-25 (Session 19)
+
+### What was done
+- **Wieczór 36 COMPLETE ✅** — MonsterConfig system (tint + scale na wrogach)
+- `server/src/monsterConfig.ts` (nowy) — `MonsterConfig` interface + `MONSTER_CONFIG` z 3 wariantami: `hunter` (biały, scale 1.0, hp 30, dmg 10), `fire_hunter` (pomarańczowy 0xff4400, scale 1.1, hp 40, dmg 14), `boss_hunter` (czerwony 0xff0000, scale 1.6, hp 80, dmg 15)
+- `src/app/game/monsterConfig.ts` (nowy) — identyczna kopia dla klienta (pattern jak itemConfig/lootConfig)
+- `server/src/GameRoom.ts` — dodano `@type("string") configId` do `EnemyState`; `spawnSingleEnemy` przyjmuje `configId`, ładuje config, używa `config.hp`/`config.maxHp`; damage w ataku pobierany z `MONSTER_CONFIG[enemy.configId].damage`; `enemy_update` broadcast rozszerzony o `configId`, `hp`, `maxHp`
+- `src/app/game/scenes/PlayScene.ts` — dodano `configId` do `EnemyData`; import `MONSTER_CONFIG`; `createEnemySprites` przyjmuje `tint`/`scale`, aplikuje `setTint` + `setScale(1.5 * scale)` na wszystkich sprite'ach; `addEnemy` lookupuje config i przekazuje tint/scale; handler `enemy_update` przekazuje `configId`, `hp`, `maxHp`
+- **W59 dodany do PLAN.md** — Global session conflict detection (cross-room) z `sessionRegistry.ts`
+
+### Decisions made
+- Dwa osobne pliki `monsterConfig.ts` (server + client) zamiast shared — zgodnie z istniejącym wzorcem (itemConfig, lootConfig)
+- Scale mnożony przez bazowy 1.5 (`setScale(1.5 * config.scale)`) — base scale gracza/wrogów to 1.5, config.scale jest relatywny
+- Damage pobierany z config zamiast stałej `ENEMY_ATTACK_DAMAGE` — każdy wariant ma własne obrażenia
+- `configId` domyślnie `"hunter"` — bez zmian w zachowaniu dla istniejących roomów
+
+### Problems encountered
+- Brak — implementacja przebiegła bez problemów
+
+### Next step
+**Wieczór 37** — 6 particle effect presets (fire, ice, poison, electric, shadow, holy) w `src/app/game/effects/particles.ts`.
 
 ---
 
