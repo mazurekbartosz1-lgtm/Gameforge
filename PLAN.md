@@ -874,124 +874,6 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 33: Roles — guest vs verified vs group creator
-
-```
-Implement the three-tier role system: guest, verified, and group creator.
-
-1. Guest users (not signed in via Clerk):
-   - Create src/app/api/auth/guest/route.ts:
-     POST /api/auth/guest — creates a temporary player record in Supabase
-     with clerk_id = 'guest_' + nanoid(), sets a 7-day HttpOnly cookie 'guestId'.
-   - In ColyseusClient.ts: if no Clerk token available, call this endpoint to get
-     a guest token, pass it as { guestToken } in room options.
-   - In server/src/GameRoom.ts onJoin(): handle guestToken case —
-     look up the player by the guest ID stored in the cookie/token.
-     Set player role = 'guest' on a new field: add @type("string") role to PlayerState.
-
-2. Verified users (signed in via Clerk): role = 'verified'.
-
-3. Group creator: role = 'creator' (from group_members.role in Supabase).
-   Load the role in onJoin() when loading player data.
-
-4. Enforce permissions in message handlers:
-   - 'place_building': guests can place, verified can place, creator can place.
-   - Future: only creator/verified can vote (Wieczór 46).
-
-5. In the UI (UIScene): show a small role badge next to the nickname
-   (crown icon for creator, checkmark for verified, no badge for guest).
-
-Confirm when done and show me what was created.
-```
-
----
-
-### [ ] Wieczór 34: Onboarding — 3 steps *(przeniesiony na koniec)*
-
-```
-Create a 3-step onboarding flow for new users in Next.js.
-
-Create src/app/onboarding/page.tsx.
-This page is shown to any authenticated user who does not have a nickname set in Supabase
-(players.nickname IS NULL or empty). Check this in middleware.ts and redirect.
-
-Step 1 — Age gate:
-- Question: "How old are you?"
-- Three buttons: "Under 13", "13–17", "18+"
-- Store selection in React state. If "Under 13": show message "Ask a parent or teacher
-  to create your group" and stop the flow. Do not create a player record.
-
-Step 2 — Group code:
-- Question: "Do you have a group code?"
-- Text input for code (format ABC-1234) + "Join group" button.
-- "Skip — I'll join later" link.
-- Validate the code via GET /api/groups/join — just check existence, don't join yet.
-- Store groupId in state.
-
-Step 3 — Nickname:
-- Text input: "Choose a nickname (3–20 characters)"
-- The nickname is sent to POST /api/players/setup:
-    { nickname, ageGroup, groupCode }
-  This API route: creates the player record in Supabase, joins the group if code provided,
-  returns { playerId }.
-- On success: redirect to /game?groupId=...
-
-Add progress indicator (Step 1 of 3, Step 2 of 3, Step 3 of 3) at the top.
-Style simply with Tailwind CSS.
-
-Confirm when done and show me what was created.
-```
-
----
-
-### [ ] Wieczór 35: Safety filter — Claude Haiku filters nicknames
-
-```
-Use Claude Haiku to filter nicknames and group descriptions for inappropriate content.
-
-1. Install the Anthropic SDK in the Next.js project:
-   npm install @anthropic-ai/sdk
-
-2. Add to .env.local:
-   ANTHROPIC_API_KEY=<your key>
-
-3. Create src/lib/safetyFilter.ts:
-
-import Anthropic from '@anthropic-ai/sdk'
-
-const client = new Anthropic()
-
-export async function isContentSafe(text: string, context: 'nickname' | 'description'): Promise<{
-  safe: boolean
-  reason?: string
-}> {
-  const response = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 100,
-    messages: [{
-      role: 'user',
-      content: `You are a content moderator for a children's game (ages 10+).
-Is this ${context} appropriate? Reply with JSON only: {"safe": true} or {"safe": false, "reason": "brief reason"}.
-${context}: "${text}"`
-    }]
-  })
-  const json = JSON.parse((response.content[0] as any).text)
-  return json
-}
-
-4. Use safetyFilter in:
-   - POST /api/players/setup (Wieczór 34): validate nickname before saving.
-   - POST /api/groups (Wieczór 31): validate group name before saving.
-   - Return 400 with { error: "Nickname not allowed", reason: "..." } if unsafe.
-
-5. Add rate limiting: max 10 safety checks per IP per minute using a simple
-   in-memory Map<string, { count, resetAt }> in src/lib/rateLimiter.ts.
-
-Confirm when done and show me what was created.
-```
-
----
-
 ## TYDZIEŃ 7 — Visual variants and RuleEngine
 
 ### [ ] Wieczór 36: Monster tint system
@@ -1625,6 +1507,128 @@ Finally, update CLAUDE_HISTORY.md Session 10 with:
 Then commit: git add . && git commit -m "fix: pre-launch bugs from user testing" && git push
 
 Confirm when done and show me the list of bugs found and fixed.
+```
+
+---
+
+---
+
+## TYDZIEŃ 6 (dokończenie) — Platform roles and safety
+
+### [ ] Wieczór 33: Roles — guest vs verified vs group creator
+
+```
+Implement the three-tier role system: guest, verified, and group creator.
+
+1. Guest users (not signed in via Clerk):
+   - Create src/app/api/auth/guest/route.ts:
+     POST /api/auth/guest — creates a temporary player record in Supabase
+     with clerk_id = 'guest_' + nanoid(), sets a 7-day HttpOnly cookie 'guestId'.
+   - In ColyseusClient.ts: if no Clerk token available, call this endpoint to get
+     a guest token, pass it as { guestToken } in room options.
+   - In server/src/GameRoom.ts onJoin(): handle guestToken case —
+     look up the player by the guest ID stored in the cookie/token.
+     Set player role = 'guest' on a new field: add @type("string") role to PlayerState.
+
+2. Verified users (signed in via Clerk): role = 'verified'.
+
+3. Group creator: role = 'creator' (from group_members.role in Supabase).
+   Load the role in onJoin() when loading player data.
+
+4. Enforce permissions in message handlers:
+   - 'place_building': guests can place, verified can place, creator can place.
+   - Future: only creator/verified can vote (Wieczór 46).
+
+5. In the UI (UIScene): show a small role badge next to the nickname
+   (crown icon for creator, checkmark for verified, no badge for guest).
+
+Confirm when done and show me what was created.
+```
+
+---
+
+### [ ] Wieczór 34: Onboarding — 3 steps *(przeniesiony na koniec)*
+
+```
+Create a 3-step onboarding flow for new users in Next.js.
+
+Create src/app/onboarding/page.tsx.
+This page is shown to any authenticated user who does not have a nickname set in Supabase
+(players.nickname IS NULL or empty). Check this in middleware.ts and redirect.
+
+Step 1 — Age gate:
+- Question: "How old are you?"
+- Three buttons: "Under 13", "13–17", "18+"
+- Store selection in React state. If "Under 13": show message "Ask a parent or teacher
+  to create your group" and stop the flow. Do not create a player record.
+
+Step 2 — Group code:
+- Question: "Do you have a group code?"
+- Text input for code (format ABC-1234) + "Join group" button.
+- "Skip — I'll join later" link.
+- Validate the code via GET /api/groups/join — just check existence, don't join yet.
+- Store groupId in state.
+
+Step 3 — Nickname:
+- Text input: "Choose a nickname (3–20 characters)"
+- The nickname is sent to POST /api/players/setup:
+    { nickname, ageGroup, groupCode }
+  This API route: creates the player record in Supabase, joins the group if code provided,
+  returns { playerId }.
+- On success: redirect to /game?groupId=...
+
+Add progress indicator (Step 1 of 3, Step 2 of 3, Step 3 of 3) at the top.
+Style simply with Tailwind CSS.
+
+Confirm when done and show me what was created.
+```
+
+---
+
+### [ ] Wieczór 35: Safety filter — Claude Haiku filters nicknames
+
+```
+Use Claude Haiku to filter nicknames and group descriptions for inappropriate content.
+
+1. Install the Anthropic SDK in the Next.js project:
+   npm install @anthropic-ai/sdk
+
+2. Add to .env.local:
+   ANTHROPIC_API_KEY=<your key>
+
+3. Create src/lib/safetyFilter.ts:
+
+import Anthropic from '@anthropic-ai/sdk'
+
+const client = new Anthropic()
+
+export async function isContentSafe(text: string, context: 'nickname' | 'description'): Promise<{
+  safe: boolean
+  reason?: string
+}> {
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 100,
+    messages: [{
+      role: 'user',
+      content: `You are a content moderator for a children's game (ages 10+).
+Is this ${context} appropriate? Reply with JSON only: {"safe": true} or {"safe": false, "reason": "brief reason"}.
+${context}: "${text}"`
+    }]
+  })
+  const json = JSON.parse((response.content[0] as any).text)
+  return json
+}
+
+4. Use safetyFilter in:
+   - POST /api/players/setup (Wieczór 34): validate nickname before saving.
+   - POST /api/groups (Wieczór 31): validate group name before saving.
+   - Return 400 with { error: "Nickname not allowed", reason: "..." } if unsafe.
+
+5. Add rate limiting: max 10 safety checks per IP per minute using a simple
+   in-memory Map<string, { count, resetAt }> in src/lib/rateLimiter.ts.
+
+Confirm when done and show me what was created.
 ```
 
 ---
