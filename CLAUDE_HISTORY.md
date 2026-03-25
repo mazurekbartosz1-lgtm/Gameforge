@@ -1084,6 +1084,27 @@ Sprawdź PLAN.md pod Wieczór 26.
 
 ---
 
+## Session 36 — 2026-03-25 (Session 21)
+
+### What was done
+- **Wieczór 40 ODŁOŻONY** — visual variant system z nowymi sprite'ami (Orc/Skeleton) odkładamy na późnej; sprite'y zostaną wygenerowane przez Pixellab; hunter działa poprawnie z tint/scale/particles
+- **Wieczór 41 COMPLETE ✅** — Voice/text input component
+- `src/app/components/ModInput.tsx` (nowy) — `'use client'`; textarea 500 znaków + licznik; voice input przez Web Speech API (continuous:false, interimResults:true, lang pl-PL/en-US); graceful fallback gdy przeglądarka nie wspiera; selektor PL/EN; submit button aktywny tylko gdy tekst; własne typy `ISpeechRecognition`/`ISpeechRecognitionEvent`/`SpeechRecognitionWindow` (Web Speech API nie ma typów w standardowym TS DOM)
+- `src/app/forge/page.tsx` (nowy) — strona `/forge`; wymaga auth (redirect na `/` dla niezalogowanych); debug box po submit (placeholder na W42 Claude API); styl spójny z resztą projektu
+
+### Decisions made
+- Auth enforcement client-side przez `useUser()` + redirect — middleware już globalnie chroni API routes; `/forge` page redirect wystarczy
+- Web Speech API: własne interfejsy zamiast `@types/dom-speech-recognition` — zero dependencies, dokładnie tyle ile potrzeba
+- Submit button disabled dopóki textarea pusta lub przekracza 500 znaków
+
+### Problems encountered
+- TS: `SpeechRecognition`/`SpeechRecognitionEvent` nie istnieją w standardowym DOM lib → własne interfejsy
+
+### Next step
+**Wieczór 42** — Claude API: 3 pytania doprecyzowujące (`POST /api/forge/clarify`), wyświetlenie ich na stronie `/forge`.
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

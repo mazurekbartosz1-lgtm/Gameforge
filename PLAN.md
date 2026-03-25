@@ -1173,43 +1173,15 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 40: Visual variant system test
+### [~] Wieczór 40: Visual variant system test — ODŁOŻONY
 
-```
-Create 5 monster variants from 2 base sprites to test the full MonsterConfig + tint system.
-
-The 2 base sprites are:
-- 'orc' — from public/assets/Pixel Crawler - Free Pack 2.0.4/.../Enemies/Orc/ (check ASSETS_MAP.md)
-- 'skeleton' — from public/assets/Pixel Crawler - Cemetery 0.4/.../Enemies/ (check ASSETS_MAP.md)
-
-Add these 5 variants to MONSTER_CONFIG in src/shared/monsterConfig.ts:
-
-1. orc (already exists — base variant, no tint)
-2. fire_orc — baseSprite: 'orc', tint: 0xff4400, particleEffect: 'fire', hp: 40
-3. ice_orc — baseSprite: 'orc', tint: 0x88ddff, particleEffect: 'ice', hp: 35, damage: 4
-4. skeleton (base) — baseSprite: 'skeleton', tint: 0xffffff, hp: 20, damage: 3,
-   dropTable: [{ item: 'bone', chance: 0.8, qty: 1 }]
-5. shadow_skeleton — baseSprite: 'skeleton', tint: 0x330033, particleEffect: 'shadow',
-   hp: 25, damage: 6, dropTable: [{ item: 'bone', chance: 1, qty: 2 }]
-
-SERVER: in onCreate(), spawn one of each variant (5 enemies total) at different positions.
-
-CLIENT: ensure the Phaser sprite correctly:
-- Loads both base sprite sheets.
-- Applies tint and scale from config.
-- Starts the correct particle effect.
-- Shows the variant name on hover (Phaser Text, visible on pointer over).
-
-Run the game and take a screenshot to verify all 5 variants render with distinct colors.
-
-Confirm when done and show me what was created.
-```
+*Odłożony — nowe sprite'y (Orc, Skeleton i inne warianty) zostaną wygenerowane przez Pixellab w późniejszym etapie. Obecny hunter działa poprawnie z tint/scale/particles. Wrócimy do tego po W60 lub gdy sprite'y będą gotowe.*
 
 ---
 
 ## TYDZIEŃ 8 — AI modifications
 
-### [ ] Wieczór 41: Voice/text input component
+### [x] Wieczór 41: Voice/text input component
 
 ```
 Create a voice and text input component for entering game modification requests.
