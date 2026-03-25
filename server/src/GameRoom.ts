@@ -219,6 +219,9 @@ export class GameRoom extends Room<GameRoomOptions> {
   /** Maps sessionId → player UUID in DB (needed for room state save). */
   private playerDbIds = new Map<string, string>();
 
+  /** Clients waiting for session conflict resolution (second tab scenario). */
+  private pendingTakeovers = new Map<string, { staleSessionId: string; player: PlayerState; fog: string[]; dbId: string }>();
+
   /** Fog-of-war tiles discovered per player (sessionId → "tx,ty"[]). */
   private playerFog = new Map<string, string[]>();
 
@@ -297,6 +300,28 @@ export class GameRoom extends Room<GameRoomOptions> {
         });
         if (staleSessionId) {
           const stale = this.state.players.get(staleSessionId)!;
+          const oldClient = this.clients.find(c => c.sessionId === staleSessionId);
+
+          if (oldClient) {
+            // Old session is still actively connected — real conflict (second tab/browser)
+            const staleFog = this.playerFog.get(staleSessionId) ?? [];
+            const staleDbId = this.playerDbIds.get(staleSessionId) ?? "";
+            // Copy current state from active player to pending player object
+            player.x = stale.x; player.y = stale.y;
+            player.hp = stale.hp; player.maxHp = stale.maxHp;
+            player.hunger = stale.hunger; player.sanity = stale.sanity;
+            player.attack = stale.attack; player.defense = stale.defense;
+            player.activeSlot = stale.activeSlot;
+            stale.inventory.forEach((item) => player.inventory.push(item));
+            stale.equipment.forEach((itemId, slot) => player.equipment.set(slot, itemId));
+            this.pendingTakeovers.set(client.sessionId, { staleSessionId, player, fog: staleFog, dbId: staleDbId });
+            client.send("session_conflict", {});
+            oldClient.send("session_incoming", {});
+            console.log(`[GameRoom] Session conflict: ${player.nickname} connecting from second location`);
+            return; // Don't add to state — wait for confirm_takeover or decline_takeover
+          }
+
+          // Old client is gone (F5 reconnect) — auto-takeover
           player.x = stale.x;
           player.y = stale.y;
           player.hp = stale.hp;
@@ -451,9 +476,12 @@ export class GameRoom extends Room<GameRoomOptions> {
       animKey: player.animKey,
       nickname: player.nickname,
     }, { except: client });
+
+    client.send("session_ready", {});
   }
 
   async onLeave(client: Client, _code?: number) {
+    this.pendingTakeovers.delete(client.sessionId);
     const player = this.state.players.get(client.sessionId);
     if (player) {
       await this._savePlayerState(player);
@@ -889,6 +917,47 @@ export class GameRoom extends Room<GameRoomOptions> {
   // ─── Message Handlers ─────────────────────────────────────────────────────
 
   private registerMessageHandlers() {
+    this.onMessage("confirm_takeover", async (client) => {
+      const pending = this.pendingTakeovers.get(client.sessionId);
+      if (!pending) return;
+      this.pendingTakeovers.delete(client.sessionId);
+
+      const { staleSessionId, player, fog, dbId } = pending;
+      const oldClient = this.clients.find(c => c.sessionId === staleSessionId);
+      oldClient?.send("session_taken_over", {});
+
+      const stale = this.state.players.get(staleSessionId);
+      if (stale) {
+        await this._savePlayerState(stale);
+        this.playerFog.delete(staleSessionId);
+        this.playerDbIds.delete(staleSessionId);
+        this.state.players.delete(staleSessionId);
+        this.broadcast("player_remove", { sessionId: staleSessionId }, { except: client });
+      }
+      oldClient?.leave(4002);
+
+      this.playerFog.set(client.sessionId, fog);
+      if (dbId) this.playerDbIds.set(client.sessionId, dbId);
+      this.state.players.set(client.sessionId, player);
+      this._updateMetadata();
+
+      const existing: object[] = [];
+      this.state.players.forEach((p, sid) => {
+        if (sid !== client.sessionId)
+          existing.push({ sessionId: sid, x: p.x, y: p.y, animKey: p.animKey, nickname: p.nickname });
+      });
+      client.send("players_init", existing);
+      client.send("session_ready", {});
+      this.broadcast("player_add", { sessionId: client.sessionId, x: player.x, y: player.y, animKey: player.animKey, nickname: player.nickname }, { except: client });
+      console.log(`[GameRoom] Takeover confirmed: ${player.nickname} took over ${staleSessionId}`);
+    });
+
+    this.onMessage("decline_takeover", (client) => {
+      this.pendingTakeovers.delete(client.sessionId);
+      client.leave(4000);
+      console.log(`[GameRoom] Takeover declined by ${client.sessionId}`);
+    });
+
     this.onMessage("move", (client, data: { x: number; y: number; direction: string; animKey: string }) => {
       const player = this.state.players.get(client.sessionId);
       if (!player) return;
