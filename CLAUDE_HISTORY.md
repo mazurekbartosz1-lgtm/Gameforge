@@ -1128,6 +1128,35 @@ Pamiętaj: dodać `ANTHROPIC_API_KEY` na Vercel przed deplojem.
 
 ---
 
+## Session 38 — 2026-03-25 (Session 21, kontynuacja)
+
+### What was done
+- **Wieczór 43 COMPLETE ✅** — Claude API generuje ModConfig JSON
+- `src/shared/modConfig.ts` (nowy) — typy `ModConfig`, `ModMonsterVariant`, `ModFoodVariant`, `ModRule`
+- `src/app/api/forge/generate/route.ts` (nowy) — `POST /api/forge/generate`; claude-sonnet-4-6; pełny system prompt z ograniczeniami gry (baseSprite:hunter, skala 0.4–4.0, 6 efektów particle + ich combat effects, RuleEngine triggery/warunki/efekty); zapis do Supabase `mod_configs`; zwraca `{ modId, config }`
+- `src/app/api/forge/mods/route.ts` (nowy) — GET lista modów usera (bez deleted); DELETE soft-delete po id
+- `src/app/forge/moje-mody/page.tsx` (nowy) — lista modów z czytelnym podglądem (kolor wroga, tagi, reguły); przycisk Usuń; przycisk "Wyślij do głosowania" (placeholder W45)
+- `src/app/game/GameHeader.tsx` — przycisk MOJE MODY (pomarańczowy, link do /forge/moje-mody)
+- `src/app/api/forge/clarify/route.ts` — rozbudowany system prompt: pełne ograniczenia gry, instrukcja redirect dla niemożliwych próśb, nowy format `{ redirect: string|null, questions: string[] }`
+- `src/app/forge/page.tsx` — obsługa `redirect` (żółta ramka 💡 gdy Claude proponuje alternatywę); czytelny format reguł (`formatTrigger`/`formatEffect`); przycisk "Moje Mody →" po zapisaniu
+- System prompt generate: CRITICAL — nazwa/opis moda musi opisywać faktyczną modyfikację, nie oryginalne niemożliwe żądanie
+- Supabase tabela `mod_configs` (SQL do wykonania przez usera): `id UUID, group_id, created_by, config JSONB, status TEXT, votes INT, created_at`
+
+### Decisions made
+- `formatTrigger`/`formatEffect` — helper funkcje w forge/page.tsx i moje-mody/page.tsx dla czytelnego opisu reguł po polsku
+- Redirect w clarify: model zwraca `{ redirect, questions }` — żółta ramka pokazuje alternatywę zanim gracz odpowie na pytania
+- Mod name/opis = faktyczna modyfikacja (nie oryginalne żądanie gracza) — CRITICAL w system promptcie generate
+- `status: "deleted"` zamiast fizycznego usuwania — soft delete
+
+### Problems encountered
+- Claude generował nazwę/opis z oryginalnego niemożliwego żądania (np. "Zipper Smok Ognia") zamiast faktycznej modyfikacji — fix: CRITICAL instrukcja w system promptcie
+
+### Next step
+**Wieczór 44** — Fork system: TestRoom w Colyseus (solo testing moda przed wysłaniem do głosowania).
+Pamiętaj: `ANTHROPIC_API_KEY` dodać na Vercel przed deplojem.
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

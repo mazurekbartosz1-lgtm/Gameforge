@@ -137,8 +137,19 @@ export default function GameHeader() {
         </div>
       </div>
 
-      {/* RIGHT — historia + leave */}
+      {/* RIGHT — historia + moje mody + leave */}
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+      <a
+        href="/forge/moje-mody"
+        style={{
+          fontFamily: S.display, fontWeight: 700, fontSize: 10, letterSpacing: "0.08em",
+          textTransform: "uppercase", color: "#FF8C00", textDecoration: "none",
+          border: "1px solid rgba(255,140,0,0.3)", padding: "5px 10px", whiteSpace: "nowrap",
+          opacity: 0.8,
+        }}
+      >
+        MOJE MODY
+      </a>
       <a
         href={(() => {
           const gId = searchParams.get("groupId");

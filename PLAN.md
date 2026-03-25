@@ -1252,7 +1252,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 43: Claude API generates ModConfig JSON
+### [x] Wieczór 43: Claude API generates ModConfig JSON
 
 ```
 Create the mod generation endpoint that produces a complete ModConfig JSON.
