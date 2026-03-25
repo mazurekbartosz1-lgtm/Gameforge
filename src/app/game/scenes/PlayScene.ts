@@ -427,12 +427,14 @@ export class PlayScene extends Scene {
     room.onMessage("session_taken_over", () => {
       // Another tab/browser took over this session — freeze the game and show overlay
       this.physics?.pause();
-      const overlay = this.add.rectangle(400, 300, 800, 600, 0x000000, 0.85).setDepth(1000);
-      const box = this.add.rectangle(400, 300, 420, 180, 0x0d0d1a).setDepth(1001);
+      const cx = this.cameras.main.width / 2;
+      const cy = this.cameras.main.height / 2;
+      const overlay = this.add.rectangle(cx, cy, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.85).setDepth(1000).setScrollFactor(0);
+      const box = this.add.rectangle(cx, cy, 420, 180, 0x0d0d1a).setDepth(1001).setScrollFactor(0);
       box.setStrokeStyle(1, 0x00e3fd);
-      this.add.text(400, 250, "SESJA PRZEJĘTA", { fontFamily: "Courier New", fontSize: "11px", color: "#00e3fd", letterSpacing: 3 }).setOrigin(0.5).setDepth(1002);
-      this.add.text(400, 285, "Twoja sesja została przejęta\nprzez inne okno przeglądarki.", { fontFamily: "Courier New", fontSize: "13px", color: "#ffffff", align: "center" }).setOrigin(0.5).setDepth(1002);
-      const btn = this.add.text(400, 340, "[ WRÓĆ DO MENU ]", { fontFamily: "Courier New", fontSize: "13px", color: "#00e3fd" }).setOrigin(0.5).setDepth(1002).setInteractive({ useHandCursor: true });
+      this.add.text(cx, cy - 50, "SESJA PRZEJĘTA", { fontFamily: "Courier New", fontSize: "11px", color: "#00e3fd", letterSpacing: 3 }).setOrigin(0.5).setDepth(1002).setScrollFactor(0);
+      this.add.text(cx, cy - 15, "Twoja sesja została przejęta\nprzez inne okno przeglądarki.", { fontFamily: "Courier New", fontSize: "13px", color: "#ffffff", align: "center" }).setOrigin(0.5).setDepth(1002).setScrollFactor(0);
+      const btn = this.add.text(cx, cy + 40, "[ WRÓĆ DO MENU ]", { fontFamily: "Courier New", fontSize: "13px", color: "#00e3fd" }).setOrigin(0.5).setDepth(1002).setScrollFactor(0).setInteractive({ useHandCursor: true });
       btn.on("pointerup", () => { window.location.href = "/"; });
     });
 

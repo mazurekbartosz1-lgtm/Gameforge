@@ -962,8 +962,26 @@ Sprawdź PLAN.md pod Wieczór 26.
 - Supabase `SUPABASE_SERVICE_ROLE_KEY` na Vercel był skopiowany niepełny — stąd oryginalne 404 (RLS blokował wszystkie zapytania anonimowym kluczem)
 
 ### Next step
-**Single active session dla gości** — ten sam mechanizm w obrębie jednej przeglądarki (oparty o `sessionStorage` / `guestId`).
-Potem: **Wieczór 33** — Role użytkowników (guest vs verified vs group creator).
+**Wieczór 33** — Role użytkowników (guest vs verified vs group creator).
+
+---
+
+## Session 31b — 2026-03-25 (Session 17, kontynuacja)
+
+### What was done
+- **Single active session dla gości** — ten sam mechanizm konfliktu co dla zalogowanych, zastosowany w bloku gościa w `GameRoom.ts` (`onJoin`)
+- `src/app/game/network/ColyseusClient.ts` — `guestId` przeniesiony z `sessionStorage` do `localStorage`: `localStorage` jest współdzielony między kartami tej samej przeglądarki → dwie karty jako gość mają ten sam `guestId` → serwer wykrywa konflikt
+- `src/app/game/scenes/PlayScene.ts` — fix pozycjonowania overlay `session_taken_over`: dodano `.setScrollFactor(0)` do wszystkich elementów + pozycja relative do `cameras.main.width/height` zamiast hardcoded `(400, 300)` — overlay teraz pokrywa cały ekran niezależnie od pozycji kamery
+
+### Decisions made
+- `localStorage` zamiast `sessionStorage` dla `guestId` — `sessionStorage` jest per-tab (każda karta miała inny `guestId`), co uniemożliwiało wykrycie konfliktu. `localStorage` współdzielony między kartami rozwiązuje problem. Sesja gościa trwa teraz dłużej (przeżywa zamknięcie przeglądarki), co jest zgodne z PRD (7-day guest session)
+- `setScrollFactor(0)` na elementach Phaser overlay — bez tego elementy scrollowały z kamerą/światem
+
+### Problems encountered
+- Dwie karty jako gość pokazywały 2 graczy zamiast modal konfliktu — przyczyna: `sessionStorage` per-tab, każda karta miała inny `guestId`
+
+### Next step
+**Wieczór 33** — Role użytkowników (guest vs verified vs group creator): ograniczenie zarządzania grupą tylko do twórcy, badge ról w PlayerPanel.
 
 ---
 

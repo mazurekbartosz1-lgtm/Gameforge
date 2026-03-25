@@ -411,6 +411,26 @@ export class GameRoom extends Room<GameRoomOptions> {
       });
       if (staleSessionId) {
         const stale = this.state.players.get(staleSessionId)!;
+        const oldClient = this.clients.find(c => c.sessionId === staleSessionId);
+
+        if (oldClient) {
+          // Old guest session still active (duplicated tab) — show conflict modal
+          const staleFog = this.playerFog.get(staleSessionId) ?? [];
+          player.x = stale.x; player.y = stale.y;
+          player.hp = stale.hp; player.maxHp = stale.maxHp;
+          player.hunger = stale.hunger; player.sanity = stale.sanity;
+          player.attack = stale.attack; player.defense = stale.defense;
+          player.activeSlot = stale.activeSlot;
+          stale.inventory.forEach((item) => player.inventory.push(item));
+          stale.equipment.forEach((itemId, slot) => player.equipment.set(slot, itemId));
+          this.pendingTakeovers.set(client.sessionId, { staleSessionId, player, fog: staleFog, dbId: "" });
+          client.send("session_conflict", {});
+          oldClient.send("session_incoming", {});
+          console.log(`[GameRoom] Guest session conflict: ${userId}`);
+          return;
+        }
+
+        // Old client gone (F5) — auto-takeover
         player.x = stale.x; player.y = stale.y;
         player.hp = stale.hp; player.maxHp = stale.maxHp;
         player.hunger = stale.hunger; player.sanity = stale.sanity;

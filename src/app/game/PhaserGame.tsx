@@ -64,8 +64,8 @@ export default function PhaserGame() {
 
       startPhaserRef.current = startPhaser;
 
-      if (token && roomRef.current) {
-        // Wait for server to confirm session status
+      if (roomRef.current) {
+        // Wait for server to confirm session status (works for both logged-in and guest)
         await new Promise<void>((resolve) => {
           const r = roomRef.current!;
           const onReady = () => { r.removeAllListeners("session_ready"); r.removeAllListeners("session_conflict"); resolve(); startPhaser(); };
@@ -73,8 +73,6 @@ export default function PhaserGame() {
           r.onMessage("session_ready", onReady);
           r.onMessage("session_conflict", onConflict);
         });
-      } else {
-        startPhaser();
       }
     })();
 

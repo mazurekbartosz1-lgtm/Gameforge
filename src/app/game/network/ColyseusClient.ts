@@ -57,10 +57,10 @@ export async function connectRoom(token?: string, nickname?: string, groupId?: s
   // Guest ID: persists within same browser tab session (sessionStorage survives F5,
   // is cleared when the tab/browser is closed — that's intentional for guests).
   if (!token) {
-    let guestId = sessionStorage.getItem("guestId") ?? undefined;
+    let guestId = localStorage.getItem("guestId") ?? undefined;
     if (!guestId) {
       guestId = crypto.randomUUID();
-      sessionStorage.setItem("guestId", guestId);
+      localStorage.setItem("guestId", guestId);
     }
     room = await joinAsGuest(guestId);
     console.log("Colyseus guest connected, sessionId:", room!.sessionId);

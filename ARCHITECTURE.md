@@ -156,6 +156,29 @@ Gameforge/
 
 ---
 
+## Session 17 additions
+
+### Production 404 fix (groups API)
+- `src/app/api/groups/route.ts` + `src/app/api/groups/join/route.ts` — `getOrCreatePlayerId()` zamiast `getPlayerIdByClerk()`: jeśli gracz nie ma rekordu w `players`, tworzy go automatycznie (nickname = clerkId tymczasowo, nadpisywany przy wejściu do gry)
+- `src/lib/supabase.ts` — `SUPABASE_URL ?? ""` zamiast `!` (zabezpieczenie przed crashem build-time)
+- Root cause: rekord w `players` był tworzony tylko przez Colyseus przy pierwszym wejściu do gry; nowi użytkownicy na produkcji nie mieli rekordu
+
+### Single active session (WhatsApp-style)
+- Mechanizm: jedna aktywna sesja na użytkownika (zalogowany) lub na przeglądarkę (gość)
+- `server/src/GameRoom.ts`:
+  - `pendingTakeovers: Map<sessionId, { staleSessionId, player, fog, dbId }>` — klienci czekający na rozwiązanie konfliktu
+  - `onJoin` — `this.clients.find(c => c.sessionId === staleSessionId)`: jeśli stary WebSocket żyje → `session_conflict` do nowego, `session_incoming` do starego, `return` bez dodania do state; jeśli martwy → auto-takeover (F5)
+  - Handler `confirm_takeover` — kickuje stary client (`session_taken_over`), przenosi state, dodaje nowego do state
+  - Handler `decline_takeover` — nowy client wychodzi
+  - `session_ready` wysyłany po poprawnym join (sygnał do startu Phasera)
+  - `onLeave` — czyści `pendingTakeovers`
+  - Dotyczy zarówno zalogowanych (Clerk) jak i gości (ta sama logika w obu blokach)
+- `src/app/game/PhaserGame.tsx` — React state `connecting|conflict|playing`; czeka na `session_ready`/`session_conflict` przed startem Phasera; modal "Konflikt sesji" [PRZEJMIJ SESJĘ] [ANULUJ]
+- `src/app/game/scenes/PlayScene.ts` — handler `session_taken_over`: physics pause, overlay z `.setScrollFactor(0)` (fixed do kamery), przycisk powrotu
+- `src/app/game/network/ColyseusClient.ts` — `guestId` przeniesiony z `sessionStorage` do `localStorage` (współdzielony między kartami tej samej przeglądarki → konflikt wykrywalny)
+
+---
+
 ## Wieczór 26 additions (Session 14)
 
 ### Enemy drop system
