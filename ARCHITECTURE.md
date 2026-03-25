@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-25 (Session 16+hotfix — Groups, per-group rooms, game header, EventLog, room history, nickname fix; Vercel Suspense fix)
+2026-03-25 (Session 18 — PLAN.md reorganizacja W33-W35→W51-W53, W51-W55→W54-W58; Vercel build fix: removeAllListeners TypeScript error)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)

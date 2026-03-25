@@ -68,10 +68,17 @@ export default function PhaserGame() {
         // Wait for server to confirm session status (works for both logged-in and guest)
         await new Promise<void>((resolve) => {
           const r = roomRef.current!;
-          const onReady = () => { r.removeAllListeners("session_ready"); r.removeAllListeners("session_conflict"); resolve(); startPhaser(); };
-          const onConflict = () => { r.removeAllListeners("session_ready"); r.removeAllListeners("session_conflict"); resolve(); setStatus("conflict"); };
-          r.onMessage("session_ready", onReady);
-          r.onMessage("session_conflict", onConflict);
+          let done = false;
+          const offReady = r.onMessage("session_ready", () => {
+            if (done) return; done = true;
+            offReady(); offConflict();
+            resolve(); startPhaser();
+          });
+          const offConflict = r.onMessage("session_conflict", () => {
+            if (done) return; done = true;
+            offReady(); offConflict();
+            resolve(); setStatus("conflict");
+          });
         });
       }
     })();

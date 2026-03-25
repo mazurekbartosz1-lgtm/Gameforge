@@ -801,8 +801,7 @@ Confirm when done and show me what was created.
 
 ---
 
-*Wieczóry 28–30 (Building & cooking) przeniesione do Tygodnia 10 (W51–W55) zgodnie z priorytetami.*
-*Wieczór 34 (Onboarding) przeniesiony na koniec (po W55) — platforma najpierw, UX flow na końcu.*
+*Wieczóry 28–30 (Building & cooking) przeniesione do Tygodnia 10 (W54–W58) zgodnie z priorytetami.*
 
 ---
 
@@ -871,6 +870,11 @@ Implement the group joining flow in the Next.js frontend.
 
 Confirm when done and show me what was created.
 ```
+
+---
+
+### [x] Hotfix / Sesje 30–31b: Production fixes + session conflict detection
+DONE — Vercel prerender fix (`<Suspense>` wokół `PlayerPanel`); `getOrCreatePlayerId()` — automatyczne tworzenie rekordu gracza w Supabase gdy brak (fix 404 na `/api/groups`); single active session dla zalogowanych (WhatsApp-style: `session_conflict` → modal PRZEJMIJ/ANULUJ → `confirm_takeover`/`decline_takeover`); single active session dla gości — `guestId` przeniesiony z `sessionStorage` do `localStorage` żeby był współdzielony między kartami; `session_ready` jako sygnał startu Phasera; overlay `session_taken_over` z `.setScrollFactor(0)`.
 
 ---
 
@@ -1429,7 +1433,7 @@ Confirm when done and show me the full list of changes.
 
 ---
 
-### [ ] Wieczór 49: Deploy frontend to Vercel + environment variables
+### [x] Wieczór 49: Deploy frontend to Vercel + environment variables
 
 ```
 Deploy the Next.js frontend to Vercel.
@@ -1513,41 +1517,45 @@ Confirm when done and show me the list of bugs found and fixed.
 
 ---
 
-## TYDZIEŃ 6 (dokończenie) — Platform roles and safety
+## Wieczóry 51–53 — Platform roles and safety
 
-### [ ] Wieczór 33: Roles — guest vs verified vs group creator
+### [ ] Wieczór 51: Roles — guest vs verified vs group creator
 
 ```
 Implement the three-tier role system: guest, verified, and group creator.
 
-1. Guest users (not signed in via Clerk):
-   - Create src/app/api/auth/guest/route.ts:
-     POST /api/auth/guest — creates a temporary player record in Supabase
-     with clerk_id = 'guest_' + nanoid(), sets a 7-day HttpOnly cookie 'guestId'.
-   - In ColyseusClient.ts: if no Clerk token available, call this endpoint to get
-     a guest token, pass it as { guestToken } in room options.
-   - In server/src/GameRoom.ts onJoin(): handle guestToken case —
-     look up the player by the guest ID stored in the cookie/token.
-     Set player role = 'guest' on a new field: add @type("string") role to PlayerState.
+NOTE: Guest session already works via localStorage guestId passed directly to Colyseus.
+Do NOT create a /api/auth/guest endpoint or HttpOnly cookie system — that's been superseded.
 
-2. Verified users (signed in via Clerk): role = 'verified'.
+1. Add @type("string") role to PlayerState in server/src/GameRoom.ts.
+   Set on join:
+   - No Clerk token (guestId path) → role = 'guest'
+   - Clerk token present, not group creator → role = 'verified'
+   - Clerk token present + group_members.role = 'creator' for this groupId → role = 'creator'
+   Load creator role from Supabase in onJoin() after loading player data:
+     SELECT role FROM group_members WHERE player_id = :playerId AND group_id = :groupId
 
-3. Group creator: role = 'creator' (from group_members.role in Supabase).
-   Load the role in onJoin() when loading player data.
+2. Enforce permissions in message handlers (server/src/GameRoom.ts):
+   - Only 'creator' role can: reset group code (future), rollback last change (future).
+   - Guests CAN harvest, move, eat — no restrictions on core gameplay.
+   - Future: only 'verified' and 'creator' can submit mods and vote (Wieczór 45–46).
 
-4. Enforce permissions in message handlers:
-   - 'place_building': guests can place, verified can place, creator can place.
-   - Future: only creator/verified can vote (Wieczór 46).
+3. Show role badge in PlayerPanel (src/app/game/PlayerPanel.tsx):
+   - 'creator': gold crown icon (👑 or text "CREATOR" with gold color #FFD700)
+   - 'verified': cyan checkmark (✓ with color #00e3fd)
+   - 'guest': no badge, just nickname
+   Role comes from the gameStats window event (add role field to stats_update in PlayScene.ts).
 
-5. In the UI (UIScene): show a small role badge next to the nickname
-   (crown icon for creator, checkmark for verified, no badge for guest).
+4. Show other players' roles above their head in PlayScene.ts:
+   - Remote player label: "[nickname] 👑" for creator, "[nickname] ✓" for verified, "[nickname]" for guest.
+   - Update when player.role changes via room.state.players.onChange.
 
 Confirm when done and show me what was created.
 ```
 
 ---
 
-### [ ] Wieczór 34: Onboarding — 3 steps *(przeniesiony na koniec)*
+### [ ] Wieczór 52: Onboarding — 3 steps
 
 ```
 Create a 3-step onboarding flow for new users in Next.js.
@@ -1585,7 +1593,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 35: Safety filter — Claude Haiku filters nicknames
+### [ ] Wieczór 53: Safety filter — Claude Haiku filters nicknames
 
 ```
 Use Claude Haiku to filter nicknames and group descriptions for inappropriate content.
@@ -1621,7 +1629,7 @@ ${context}: "${text}"`
 }
 
 4. Use safetyFilter in:
-   - POST /api/players/setup (Wieczór 34): validate nickname before saving.
+   - POST /api/players/setup (Wieczór 52): validate nickname before saving.
    - POST /api/groups (Wieczór 31): validate group name before saving.
    - Return 400 with { error: "Nickname not allowed", reason: "..." } if unsafe.
 
@@ -1637,7 +1645,7 @@ Confirm when done and show me what was created.
 
 ## TYDZIEŃ 10 — Building and cooking
 
-### [ ] Wieczór 51: BuildingConfig + build mode
+### [ ] Wieczór 54: BuildingConfig + build mode
 
 ```
 Implement building placement with a green/red preview system.
@@ -1683,7 +1691,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 52: Buildings in world with collisions and HP
+### [ ] Wieczór 55: Buildings in world with collisions and HP
 
 ```
 Render buildings from Colyseus WorldState and add physics collisions.
@@ -1716,7 +1724,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 53: Bonfire — basic cooking
+### [ ] Wieczór 56: Bonfire — basic cooking
 
 ```
 Implement the Bonfire cooking station (no recipe system — just convert raw food to cooked).
@@ -1745,13 +1753,13 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 54: ~~Crafting~~ — USUNIĘTY (na razie)
+### [ ] Wieczór 57: ~~Crafting~~ — USUNIĘTY (na razie)
 
 *Krafting (Workbench, Anvil, receptury craftingu) usunięty z planu na ten etap.*
 
 ---
 
-### [ ] Wieczór 55: Save buildings to Supabase + load on room create
+### [ ] Wieczór 58: Save buildings to Supabase + load on room create
 
 ```
 Persist buildings to Supabase and reload them when a Colyseus room is created.
@@ -1783,4 +1791,4 @@ Confirm when done and show me what was created.
 
 ---
 
-*End of plan. Total: 50 evenings across 10 weeks.*
+*End of plan. Total: 58 evenings across 10 weeks.*

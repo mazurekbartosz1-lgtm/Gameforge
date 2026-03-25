@@ -985,6 +985,24 @@ Sprawdź PLAN.md pod Wieczór 26.
 
 ---
 
+## Session 32 — 2026-03-25 (Session 18)
+
+### What was done
+- **PLAN.md reorganizacja** — W33-W35 przemianowane na W51-W53 (przeniesione przed Tydzień 10); stary W51-W55 → W54-W58; zaktualizowano cross-referencje (W34→W52 w W53); nota o W28-30 zaktualizowana; W49 oznaczony [x]; total: 50→58 wieczorów
+- **Vercel build fix** — `PhaserGame.tsx`: `removeAllListeners(string)` nie istnieje w typach Colyseus.js; zastąpiono zwracaną funkcją `off` z `r.onMessage(...)` + flaga `done` zapobiegająca podwójnemu resolve
+
+### Decisions made
+- `onMessage` w Colyseus.js zwraca funkcję off — to właściwy sposób na jednorazowe listenery
+- Wieczory 51-53 (Roles, Onboarding, Safety) wstawione przed W54-58 (Building/Cooking) — platforma musi być kompletna przed mechanikami budowania
+
+### Problems encountered
+- Vercel TypeScript error: `removeAllListeners` w colyseus.js nie przyjmuje argumentów (0 expected, got 1)
+
+### Next step
+**Wieczór 51** — Roles: guest / verified / group creator (`role` w PlayerState, badge w PlayerPanel, etykiety nad głowami graczy).
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,
