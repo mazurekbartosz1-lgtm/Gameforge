@@ -1,12 +1,12 @@
 import { type Room } from "colyseus.js";
-import { ITEM_DEFS, ITEM_MAP, type ItemDef } from "./itemConfig";
+import { ITEM_DEFS, ITEM_MAP, getItemDef, type ItemDef } from "./itemConfig";
 
 // Layout constants
 const SLOT_SIZE   = 44;
 const SLOT_GAP    = 4;
 const HOTBAR_COLS = 8;
-const GRID_COLS   = 4;
-const GRID_ROWS   = 5;
+const GRID_COLS   = 5;
+const GRID_ROWS   = 6;
 const CANVAS_W    = 800;
 const CANVAS_H    = 600;
 
@@ -228,7 +228,7 @@ export class InventoryUI {
       if (this.selectedGridSlot >= 0) {
         const slot = this.gridSlots[this.selectedGridSlot];
         if (slot.itemId) {
-          const def = ITEM_MAP[slot.itemId];
+          const def = getItemDef(slot.itemId);
           if (def?.equippable) {
             this.equipFromSlot(slot.itemId);
           } else {
@@ -504,7 +504,7 @@ export class InventoryUI {
 
     if (this.selectedGridSlot === i) {
       // Second click on same slot → action
-      const def = ITEM_MAP[slot.itemId];
+      const def = getItemDef(slot.itemId);
       if (def?.equippable) {
         this.equipFromSlot(slot.itemId);
       } else {
@@ -518,7 +518,7 @@ export class InventoryUI {
   }
 
   private eatFromSlot(itemId: string) {
-    const def = ITEM_MAP[itemId];
+    const def = getItemDef(itemId);
     if (!def?.eatable) return;
     const count = this.inventory.get(itemId) ?? 0;
     if (count <= 0) return;
@@ -528,7 +528,7 @@ export class InventoryUI {
   }
 
   private equipFromSlot(itemId: string) {
-    const def = ITEM_MAP[itemId];
+    const def = getItemDef(itemId);
     if (!def?.equippable) return;
     const count = this.inventory.get(itemId) ?? 0;
     if (count <= 0) return;
@@ -538,16 +538,33 @@ export class InventoryUI {
   }
 
   private refreshGrid() {
+    // Build ordered list: resources first (fixed order), then gear from actual inventory
+    const resourceIds = ITEM_DEFS.filter(d => !d.equippable).map(d => d.id);
+    const entries: Array<{ id: string; qty: number }> = [];
+    // Resources in fixed order
+    for (const id of resourceIds) {
+      const qty = this.inventory.get(id) ?? 0;
+      if (qty > 0) entries.push({ id, qty });
+    }
+    // Gear: all equipped-type items from inventory (includes elemental variants)
+    this.inventory.forEach((qty, id) => {
+      if (qty > 0 && !resourceIds.includes(id)) entries.push({ id, qty });
+    });
+
     for (let i = 0; i < this.gridSlots.length; i++) {
-      const def   = ITEM_DEFS[i] ?? null;
-      const count = def ? (this.inventory.get(def.id) ?? 0) : 0;
-      this.gridSlots[i].draw(def, count, i === this.selectedGridSlot);
+      if (i < entries.length) {
+        const { id, qty } = entries[i];
+        const def = getItemDef(id) ?? null;
+        this.gridSlots[i].draw(def, qty, i === this.selectedGridSlot);
+      } else {
+        this.gridSlots[i].draw(null, 0, i === this.selectedGridSlot);
+      }
     }
 
     const sel = this.selectedGridSlot;
     if (sel >= 0) {
       const slot = this.gridSlots[sel];
-      const def  = slot.itemId ? ITEM_MAP[slot.itemId] : null;
+      const def  = slot.itemId ? (getItemDef(slot.itemId) ?? null) : null;
       this.updateInfoModal(def);
     } else {
       this.setInfoVisible(false);
@@ -592,7 +609,7 @@ export class InventoryUI {
 
       // Comparison
       const equippedId  = def.equipSlot ? this.equipment[def.equipSlot] : undefined;
-      const equippedDef = equippedId ? ITEM_MAP[equippedId] : null;
+      const equippedDef = equippedId ? (getItemDef(equippedId) ?? null) : null;
       this.infoCompHeader.setVisible(true);
       if (equippedDef) {
         const newVal      = def.attackBonus ?? def.defenseBonus ?? 0;

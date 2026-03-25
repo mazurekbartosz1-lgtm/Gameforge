@@ -32,10 +32,46 @@ const ENEMY_DROP_POOLS: Record<string, string[]> = {
   hunter: HUNTER_POOL,
 };
 
-/** Returns a loot item id or null (30% no-drop). */
+const ELEMENT_CHANCE: Record<string, number> = { common: 0.2, uncommon: 0.5, rare: 0.8 };
+const ELEMENTS = ["fire", "ice", "poison", "electric", "shadow", "holy"];
+const ELEMENT_NAMES: Record<string, string> = {
+  fire: "of Fire", ice: "of Ice", poison: "of Poison",
+  electric: "of Thunder", shadow: "of Shadow", holy: "of Holy",
+};
+const ELEMENT_BONUS: Record<string, number> = {
+  fire: 3, ice: 2, poison: 2, electric: 4, shadow: 5, holy: 6,
+};
+
+/** Returns ItemDef-like info for base or elemental weapon id. */
+export function getLootItem(id: string): LootItem | undefined {
+  if (LOOT_TABLE[id]) return LOOT_TABLE[id];
+  const match = id.match(/^(.+)_of_(\w+)$/);
+  if (!match) return undefined;
+  const [, baseId, element] = match;
+  const base = LOOT_TABLE[baseId];
+  if (!base) return undefined;
+  return {
+    ...base,
+    id,
+    name: `${base.name} ${ELEMENT_NAMES[element] ?? element}`,
+    attackBonus: base.attackBonus + (ELEMENT_BONUS[element] ?? 0),
+  };
+}
+
+/** Returns a loot item id (possibly elemental) or null (30% no-drop). */
 export function rollDrop(enemyType: string): string | null {
   if (Math.random() < 0.3) return null;
   const pool = ENEMY_DROP_POOLS[enemyType];
   if (!pool || pool.length === 0) return null;
-  return pool[Math.floor(Math.random() * pool.length)];
+  let itemId = pool[Math.floor(Math.random() * pool.length)];
+  // Roll elemental suffix for weapons
+  const item = LOOT_TABLE[itemId];
+  if (item?.slot === "weapon") {
+    const chance = ELEMENT_CHANCE[item.rarity] ?? 0;
+    if (Math.random() < chance) {
+      const element = ELEMENTS[Math.floor(Math.random() * ELEMENTS.length)];
+      itemId = `${itemId}_of_${element}`;
+    }
+  }
+  return itemId;
 }

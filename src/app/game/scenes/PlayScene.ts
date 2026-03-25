@@ -13,6 +13,8 @@ import { getRoom } from "../network/ColyseusClient";
 import { InventoryUI } from "../ui/InventoryUI";
 import { ITEM_MAP } from "../ui/itemConfig";
 import { MONSTER_CONFIG } from "../monsterConfig";
+import { createParticleTexture, playEffect, burstEffect, EFFECT_COLORS, type ParticlePreset } from "../effects/particles";
+import { getItemDef } from "../ui/itemConfig";
 
 type Direction = "down" | "up" | "left" | "right";
 
@@ -38,6 +40,9 @@ interface EnemyData {
   currentAnim: string;
   sprites: Map<string, Phaser.GameObjects.Sprite>;
   hpBar: Phaser.GameObjects.Graphics;
+  intrinsicEmitter?: Phaser.GameObjects.Particles.ParticleEmitter;
+  statusEmitters: Map<string, Phaser.GameObjects.Particles.ParticleEmitter>;
+  activeEffects: Set<string>;
 }
 
 interface ResourceNodeData {
@@ -111,6 +116,7 @@ export class PlayScene extends Scene {
   private isActionPlaying = false;
 
   private room: Room | null = null;
+  private myEquipment: Record<string, string> = {};
   private remotePlayers: Map<string, RemotePlayer> = new Map();
   private enemies: Map<string, EnemyData> = new Map();
   private resourceSprites: Map<string, Phaser.GameObjects.Image> = new Map();
@@ -214,6 +220,7 @@ export class PlayScene extends Scene {
   create() {
     this.room    = getRoom();
     this.mapSeed = (this.room as any)?.state?.mapSeed ?? 42;
+    createParticleTexture(this);
 
     // ── Infinite grass background ──────────────────────────────────────────
     // TileSprite fixed to camera viewport — tilePosition synced in update()
@@ -363,7 +370,14 @@ export class PlayScene extends Scene {
     const enemy: EnemyData = {
       id: data.id, configId, x: data.x, y: data.y, targetX: data.x, targetY: data.y,
       hp: data.hp, maxHp: data.maxHp, currentAnim: data.animKey, sprites, hpBar,
+      statusEmitters: new Map(),
+      activeEffects:  new Set(),
     };
+    // Intrinsic particle effect (e.g. fire_hunter flames, boss_hunter shadow)
+    if (config.particleEffect) {
+      const activeSprite = sprites.get("hunter_idle_down")!;
+      enemy.intrinsicEmitter = playEffect(this, config.particleEffect as ParticlePreset, data.x, data.y, activeSprite);
+    }
     this.enemies.set(data.id, enemy);
     this.playEnemyAnim(enemy, data.animKey);
   }
@@ -378,6 +392,15 @@ export class PlayScene extends Scene {
     const pct = enemy.hp / enemy.maxHp;
     const col = pct > 0.5 ? 0x44cc44 : pct > 0.25 ? 0xffaa00 : 0xcc2222;
     g.fillStyle(col, 1); g.fillRect(bx, by, w * pct, h);
+    // Status effect icons — colored circles above HP bar
+    const effects = Array.from(enemy.activeEffects);
+    effects.forEach((effect, i) => {
+      const color = EFFECT_COLORS[effect as ParticlePreset] ?? 0xffffff;
+      const cx = enemy.x - (effects.length - 1) * 7 + i * 14;
+      const cy = by - 10;
+      g.fillStyle(0x000000, 0.5); g.fillCircle(cx, cy, 6);
+      g.fillStyle(color, 1);      g.fillCircle(cx, cy, 5);
+    });
   }
 
   private killEnemy(id: string) {
@@ -390,6 +413,8 @@ export class PlayScene extends Scene {
     });
     particles.explode(12);
     this.time.delayedCall(600, () => particles.destroy());
+    enemy.intrinsicEmitter?.destroy();
+    enemy.statusEmitters.forEach((e) => e.destroy());
     enemy.sprites.forEach((s) => s.destroy());
     enemy.hpBar.destroy();
     this.enemies.delete(id);
@@ -617,7 +642,27 @@ export class PlayScene extends Scene {
 
     room.onMessage("stats_update", (data: { hp: number; maxHp: number; hunger: number; sanity: number; attack: number; defense: number; nickname: string; isNight: boolean; worldTime: number; equipment?: Record<string, string> }) => {
       window.dispatchEvent(new CustomEvent("gameStats", { detail: data }));
-      if (data.equipment) this.invUI.updateEquipment(data.equipment);
+      if (data.equipment) { this.myEquipment = data.equipment; this.invUI.updateEquipment(data.equipment); }
+    });
+
+    room.onMessage("enemy_status_update", (data: { id: string; effects: Record<string, number> }) => {
+      const enemy = this.enemies.get(data.id);
+      if (!enemy) return;
+      const now = Date.now();
+      const activeKeys = new Set(Object.keys(data.effects).filter(k => data.effects[k] > now));
+      // Start emitters for new effects
+      activeKeys.forEach((effect) => {
+        if (!enemy.statusEmitters.has(effect)) {
+          const activeSprite = enemy.sprites.get("hunter_idle_down")!;
+          const emitter = playEffect(this, effect as ParticlePreset, enemy.x, enemy.y, activeSprite);
+          enemy.statusEmitters.set(effect, emitter);
+        }
+      });
+      // Remove emitters for expired effects
+      enemy.statusEmitters.forEach((emitter, effect) => {
+        if (!activeKeys.has(effect)) { emitter.destroy(); enemy.statusEmitters.delete(effect); }
+      });
+      enemy.activeEffects = activeKeys;
     });
 
     room.onMessage("inventory_load", (items: string[]) => {
@@ -1222,7 +1267,18 @@ export class PlayScene extends Scene {
           (this.direction === "up"    && dy < 0 && Math.abs(dx) < 60);
         if (inFront && dist < closestDist) { closestDist = dist; closest = enemy; }
       });
-      if (closest && this.room) this.room.send("attack_enemy", { enemyId: (closest as EnemyData).id });
+      if (closest && this.room) {
+        this.room.send("attack_enemy", { enemyId: (closest as EnemyData).id });
+        // Weapon particle burst
+        const weaponId = this.myEquipment["weapon"];
+        const def = weaponId ? getItemDef(weaponId) : undefined;
+        if (def?.particleEffect) {
+          const REACH = 40;
+          const ax = this.px + (this.direction === "right" ? REACH : this.direction === "left" ? -REACH : 0);
+          const ay = this.py + (this.direction === "down"  ? REACH : this.direction === "up"   ? -REACH : 0);
+          burstEffect(this, def.particleEffect as ParticlePreset, ax, ay);
+        }
+      }
       this.playActionAnim("slice");
     }
 

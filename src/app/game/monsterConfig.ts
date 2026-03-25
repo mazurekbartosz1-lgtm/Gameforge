@@ -25,6 +25,7 @@ export const MONSTER_CONFIG: Record<string, MonsterConfig> = {
   },
   boss_hunter: {
     id: "boss_hunter", name: "Boss Hunter", baseSprite: "hunter", tint: 0xff0000, scale: 1.6,
+    particleEffect: "shadow",
     hp: 80, maxHp: 80, damage: 15,
     dropTable: [],
   },

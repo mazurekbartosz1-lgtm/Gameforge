@@ -3,7 +3,7 @@ import { Schema, MapSchema, ArraySchema, type } from "@colyseus/schema";
 import { verifyToken } from "@clerk/backend";
 import { loadPlayer, savePlayer, deletePlayer, loadWorldSeed, saveWorldSeed, loadDeadResources, saveDeadResources, loadRoomState, saveRoomState, insertRoomEvent } from "./db.js";
 import { FOOD_CONFIG } from "./foodConfig.js";
-import { LOOT_TABLE, rollDrop } from "./lootConfig.js";
+import { LOOT_TABLE, rollDrop, getLootItem } from "./lootConfig.js";
 import { MONSTER_CONFIG } from "./monsterConfig.js";
 
 interface GameRoomOptions extends RoomOptions {
@@ -62,6 +62,7 @@ export class EnemyState extends Schema {
   @type("int16") maxHp: number = 20;
   @type("boolean") isAlive: boolean = true;
   @type("string") animKey: string = "idle";
+  @type({ map: "float64" }) statusEffects: MapSchema<number> = new MapSchema<number>();
 }
 
 export class BuildingState extends Schema {
@@ -600,9 +601,9 @@ export class GameRoom extends Room<GameRoomOptions> {
     const weaponId = player.equipment.get("weapon");
     const armorId  = player.equipment.get("armor");
     const helmetId = player.equipment.get("helmet");
-    const weaponBonus  = weaponId  ? (LOOT_TABLE[weaponId]?.attackBonus  ?? 0) : 0;
-    const armorBonus   = armorId   ? (LOOT_TABLE[armorId]?.defenseBonus  ?? 0) : 0;
-    const helmetBonus  = helmetId  ? (LOOT_TABLE[helmetId]?.defenseBonus ?? 0) : 0;
+    const weaponBonus  = weaponId  ? (getLootItem(weaponId)?.attackBonus  ?? 0) : 0;
+    const armorBonus   = armorId   ? (getLootItem(armorId)?.defenseBonus  ?? 0) : 0;
+    const helmetBonus  = helmetId  ? (getLootItem(helmetId)?.defenseBonus ?? 0) : 0;
     player.attack  = BASE_ATTACK  + weaponBonus;
     player.defense = BASE_DEFENSE + armorBonus + helmetBonus;
   }
@@ -743,6 +744,32 @@ export class GameRoom extends Room<GameRoomOptions> {
     // px per 100ms move tick
     const moveSpeed = ENEMY_SPEED * (ENEMY_MOVE_RATE / 1000);
 
+    // Process status effects (DoT + expiry)
+    const nowTick = Date.now();
+    this.state.enemies.forEach((enemy: EnemyState) => {
+      if (!enemy.isAlive) return;
+      let statusChanged = false;
+      const toDelete: string[] = [];
+      enemy.statusEffects.forEach((expiry, effect) => {
+        if (nowTick > expiry) { toDelete.push(effect); statusChanged = true; return; }
+        if (effect === "fire")   { enemy.hp = Math.max(0, enemy.hp - 5); statusChanged = true; }
+        if (effect === "poison") { enemy.hp = Math.max(0, enemy.hp - 3); statusChanged = true; }
+      });
+      for (const k of toDelete) enemy.statusEffects.delete(k);
+      if (statusChanged) {
+        this.broadcast("enemy_hit", { id: enemy.id, hp: enemy.hp });
+        this.broadcast("enemy_status_update", {
+          id: enemy.id,
+          effects: Object.fromEntries(enemy.statusEffects.entries()),
+        });
+        if (enemy.hp <= 0 && enemy.isAlive) {
+          enemy.isAlive = false;
+          enemy.hp = 0;
+          this.broadcast("enemy_dead", { id: enemy.id, x: enemy.x, y: enemy.y });
+        }
+      }
+    });
+
     this.state.enemies.forEach((enemy: EnemyState) => {
       if (!enemy.isAlive) return;
 
@@ -878,8 +905,12 @@ export class GameRoom extends Room<GameRoomOptions> {
       const vel = this.enemyVelocities.get(enemy.id);
       if (!vel) return;
 
-      const nx = enemy.x + vel.vx;
-      const ny = enemy.y + vel.vy;
+      const nowMove = Date.now();
+      const isStunned = (enemy.statusEffects.get("electric") ?? 0) > nowMove;
+      const isSlowed  = (enemy.statusEffects.get("ice")      ?? 0) > nowMove;
+      const speedMult = isStunned ? 0 : isSlowed ? 0.5 : 1;
+      const nx = enemy.x + vel.vx * speedMult;
+      const ny = enemy.y + vel.vy * speedMult;
 
       // Find nearest player and check if new position would enter separation radius
       let nearestPlayer: { x: number; y: number } | null = null;
@@ -1043,7 +1074,7 @@ export class GameRoom extends Room<GameRoomOptions> {
     this.onMessage("equip_item", (client, data: { itemId: string }) => {
       const player = this.state.players.get(client.sessionId);
       if (!player) return;
-      const lootItem = LOOT_TABLE[data.itemId];
+      const lootItem = getLootItem(data.itemId);
       if (!lootItem) return;
       const idx = player.inventory.indexOf(data.itemId);
       if (idx === -1) return;
@@ -1258,7 +1289,34 @@ export class GameRoom extends Room<GameRoomOptions> {
       const dist = Math.hypot(enemy.x - player.x, enemy.y - player.y);
       if (dist > ENEMY_ATTACK_RANGE) return;
 
-      enemy.hp -= 10;
+      // Elemental weapon effect
+      const weaponId = player.equipment.get("weapon") ?? "";
+      const elemMatch = weaponId.match(/^.+_of_(\w+)$/);
+      const element = elemMatch?.[1];
+      let bonusDmg = 0;
+      if (element) {
+        const now = Date.now();
+        switch (element) {
+          case "fire":     enemy.statusEffects.set("fire",     now + 5000); break;
+          case "ice":      enemy.statusEffects.set("ice",      now + 4000); break;
+          case "poison":   enemy.statusEffects.set("poison",   now + 8000); break;
+          case "electric": enemy.statusEffects.set("electric", now + 2000); break;
+          case "shadow":
+            player.hp = Math.min(player.maxHp, player.hp + 10);
+            break;
+          case "holy":
+            bonusDmg = 20;
+            break;
+        }
+        this.broadcast("enemy_status_update", {
+          id: enemy.id,
+          effects: Object.fromEntries(enemy.statusEffects.entries()),
+        });
+      }
+
+      const config = MONSTER_CONFIG[enemy.configId] ?? MONSTER_CONFIG["hunter"];
+      const baseDmg = Math.ceil(10 * (player.sanity > 0 ? 1 : 0.5));
+      enemy.hp -= baseDmg + bonusDmg;
       this.broadcast("enemy_hit", { id: enemy.id, hp: enemy.hp });
 
       if (enemy.hp <= 0) {
@@ -1268,21 +1326,23 @@ export class GameRoom extends Room<GameRoomOptions> {
         // Roll loot drop
         const dropId = rollDrop(enemy.type);
         if (dropId) {
-          const lootItem = LOOT_TABLE[dropId];
-          player.inventory.push(dropId);
-          client.send("inventory_load", Array.from(player.inventory));
-          if (lootItem.rarity === "rare") {
-            this.broadcastRoomEvent("epic_loot", player.nickname, `💎 ${player.nickname} znalazł(a) ${lootItem.name} [RARE]`);
-          } else if (lootItem.rarity === "uncommon") {
-            this.broadcastRoomEvent("rare_loot", player.nickname, `⚔ ${player.nickname} zdobył(a) ${lootItem.name} [UNCOMMON]`);
+          const lootItem = getLootItem(dropId);
+          if (lootItem) {
+            player.inventory.push(dropId);
+            client.send("inventory_load", Array.from(player.inventory));
+            if (lootItem.rarity === "rare") {
+              this.broadcastRoomEvent("epic_loot", player.nickname, `💎 ${player.nickname} znalazł(a) ${lootItem.name} [RARE]`);
+            } else if (lootItem.rarity === "uncommon") {
+              this.broadcastRoomEvent("rare_loot", player.nickname, `⚔ ${player.nickname} zdobył(a) ${lootItem.name} [UNCOMMON]`);
+            }
+            this.broadcast("enemy_loot", {
+              itemId: dropId,
+              itemName: lootItem.name,
+              rarity: lootItem.rarity,
+              x: enemy.x,
+              y: enemy.y,
+            });
           }
-          this.broadcast("enemy_loot", {
-            itemId: dropId,
-            itemName: lootItem.name,
-            rarity: lootItem.rarity,
-            x: enemy.x,
-            y: enemy.y,
-          });
         }
         // Killing harms sanity
         player.sanity = Math.max(0, player.sanity - SANITY_KILL_PENALTY);

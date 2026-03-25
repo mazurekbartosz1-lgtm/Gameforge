@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-25 (Session 19 — W36: MonsterConfig system, configId w EnemyState, tint/scale wrogów)
+2026-03-25 (Session 19 — W36: MonsterConfig; W37: elemental weapons, particle effects, status effects)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -36,6 +36,7 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ Wieczór 31 (Session 16): Group creation API — POST/GET `/api/groups`, POST `/api/groups/join`; `src/middleware.ts` + `src/lib/supabase.ts`
 - ✅ Wieczór 32 (Session 16): Join by link + join by code — `src/app/join/[code]/page.tsx`; `HomeAuth.tsx` GroupSection; per-group Colyseus rooms via `filterBy(["groupId"])`; `player_room_states` per-room character state; deterministic map seed per group; game header (day/night cycle, room name, online count); `EventLog`; `/room-history` page; Clerk display name as player nickname
 - ✅ Wieczór 36 (Session 19): MonsterConfig system — `server/src/monsterConfig.ts` + `src/app/game/monsterConfig.ts`; `configId` w `EnemyState`; tint + scale per variant; 3 warianty: hunter/fire_hunter/boss_hunter; damage z config; `enemy_update` broadcast rozszerzony o configId/hp/maxHp
+- ✅ Wieczór 37 (Session 19): Elemental weapons + particle effects + status effects — `src/app/game/effects/particles.ts` (6 presetów, `playEffect`/`burstEffect`/`createParticleTexture`); `ELEMENT_MODIFIERS` + `getItemDef()` w `itemConfig.ts`; elemental suffix w `lootConfig.ts` (rollDrop + getLootItem); `statusEffects: MapSchema<float64>` w `EnemyState`; DoT (fire/poison), slow (ice), stun (electric), lifesteal (shadow), bonus dmg (holy); ikony efektów nad HP barem; burst na atak z elemental bronią; `PlayerPanel` używa `getItemDef`; inventory grid 5×6=30 slotów; fix stackowania elemental itemów
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`

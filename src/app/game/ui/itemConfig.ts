@@ -1,14 +1,48 @@
 export interface ItemDef {
-  id:           string;
-  name:         string;
-  color:        string;   // hex fill for icon
-  symbol:       string;   // 1–2 char glyph drawn on slot
-  eatable:      boolean;
-  equippable:   boolean;
-  equipSlot?:   "weapon" | "armor" | "helmet" | "item";
-  rarity?:      "common" | "uncommon" | "rare";
-  attackBonus?:  number;
-  defenseBonus?: number;
+  id:              string;
+  name:            string;
+  color:           string;   // hex fill for icon
+  symbol:          string;   // 1–2 char glyph drawn on slot
+  eatable:         boolean;
+  equippable:      boolean;
+  equipSlot?:      "weapon" | "armor" | "helmet" | "item";
+  rarity?:         "common" | "uncommon" | "rare";
+  attackBonus?:    number;
+  defenseBonus?:   number;
+  particleEffect?: string;
+}
+
+export interface ElementModifier {
+  nameSuffix:     string;
+  particleEffect: string;
+  attackBonus:    number;
+}
+
+export const ELEMENT_MODIFIERS: Record<string, ElementModifier> = {
+  fire:     { nameSuffix: "of Fire",    particleEffect: "fire",     attackBonus: 3 },
+  ice:      { nameSuffix: "of Ice",     particleEffect: "ice",      attackBonus: 2 },
+  poison:   { nameSuffix: "of Poison",  particleEffect: "poison",   attackBonus: 2 },
+  electric: { nameSuffix: "of Thunder", particleEffect: "electric", attackBonus: 4 },
+  shadow:   { nameSuffix: "of Shadow",  particleEffect: "shadow",   attackBonus: 5 },
+  holy:     { nameSuffix: "of Holy",    particleEffect: "holy",     attackBonus: 6 },
+};
+
+/** Returns ItemDef for base or elemental variant (e.g. "iron_sword_of_fire"). */
+export function getItemDef(id: string): ItemDef | undefined {
+  if (ITEM_MAP[id]) return ITEM_MAP[id];
+  const match = id.match(/^(.+)_of_(\w+)$/);
+  if (!match) return undefined;
+  const [, baseId, element] = match;
+  const base = ITEM_MAP[baseId];
+  const mod  = ELEMENT_MODIFIERS[element];
+  if (!base || !mod) return undefined;
+  return {
+    ...base,
+    id,
+    name:            `${base.name} ${mod.nameSuffix}`,
+    attackBonus:     (base.attackBonus ?? 0) + mod.attackBonus,
+    particleEffect:  mod.particleEffect,
+  };
 }
 
 /** All items the player can carry, in hotbar display order. */

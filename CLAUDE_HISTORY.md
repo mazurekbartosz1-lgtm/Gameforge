@@ -1027,6 +1027,36 @@ Sprawdź PLAN.md pod Wieczór 26.
 
 ---
 
+## Session 34 — 2026-03-25 (Session 19, kontynuacja)
+
+### What was done
+- **Wieczór 37 COMPLETE ✅** — Elemental weapons + particle effects + status effects
+- `src/app/game/effects/particles.ts` (nowy) — `ParticlePreset` type; `createParticleTexture`; `playEffect` (ciągły, follow sprite); `burstEffect` (jednorazowy burst); `EFFECT_COLORS` + `EFFECT_ICONS`; 6 presetów: fire/ice/poison/electric/shadow/holy
+- `src/app/game/ui/itemConfig.ts` — `particleEffect?` w `ItemDef`; `ELEMENT_MODIFIERS` (6 żywiołów z nameSuffix/particleEffect/attackBonus); `getItemDef(id)` parsuje warianty `_of_element` dynamicznie
+- `server/src/lootConfig.ts` — `ELEMENT_CHANCE` (common 20%, uncommon 50%, rare 80%); `rollDrop` dodaje elemental suffix do broni; `getLootItem(id)` obsługuje warianty
+- `server/src/GameRoom.ts` — `statusEffects: MapSchema<float64>` w `EnemyState`; `attack_enemy` parsuje element z equipped weapon, aplikuje status + instant efekty (shadow lifesteal, holy bonus dmg); `tickEnemyAI` przetwarza DoT (fire 5dmg/s, poison 3dmg/s) + wygasanie efektów; `tickEnemyMovement` slow (ice 50%) + stun (electric 0%); `broadcast("enemy_status_update")`; `equip_item` i `recalcStats` używają `getLootItem` zamiast `LOOT_TABLE`
+- `server/src/monsterConfig.ts` + kopia klienta — `boss_hunter` dodano `particleEffect: "shadow"`
+- `src/app/game/scenes/PlayScene.ts` — `createParticleTexture` w `create()`; `intrinsicEmitter`/`statusEmitters`/`activeEffects` w `EnemyData`; `myEquipment` tracking; `addEnemy` startuje intrinsic emitter; `killEnemy` niszczy emittery; `drawEnemyHpBar` rysuje kolorowe kółka efektów; `enemy_status_update` handler zarządza status emitterami; burst `burstEffect` na SPACE z elemental bronią
+- `src/app/game/ui/InventoryUI.ts` — grid 5×6=30 slotów; `refreshGrid` iteruje po inventory Map (fix stackowania elemental itemów); wszystkie `ITEM_MAP` zastąpione `getItemDef`
+- `src/app/game/PlayerPanel.tsx` — usunięto hardcoded `LOOT_INFO`; używa `getItemDef` dla nazwy i bonusów
+
+### Decisions made
+- `getLootItem` w lootConfig.ts (serwer) zamiast duplikowania element logic — analogia do `getItemDef` po stronie klienta
+- `equip_item` handler używa `getLootItem` — bez tej zmiany elemental bronie w ogóle nie mogły być zakładane (LOOT_TABLE miss → early return)
+- `recalcStats` używa `getLootItem` — elemental weapon bonus prawidłowo liczony do ataku gracza
+- Inventory grid iteruje po Map nie po ITEM_DEFS — każde unikalne ID (w tym `iron_sword_of_fire`) ma własny slot
+- Hotbar nadal używa ITEM_DEFS (fixed resources) — gear trafia tylko do gridu
+
+### Problems encountered
+- Burst efekty nie pojawiały się — root cause: `equip_item` handler na serwerze robił `LOOT_TABLE[data.itemId]` dla elemental ID → `undefined` → `return` → broń nie była zakładana, więc `myEquipment["weapon"]` był pusty
+- `depth` nie istnieje w `ParticleEmitterConfig` Phasera — fix: `emitter.setDepth(11)` po stworzeniu
+- TS error w PlayerPanel: `info.attackBonus` possibly undefined → fix: `?? 0`
+
+### Next step
+**Wieczór 38** — RuleEngine in Colyseus (deklaratywne reguły: trigger, conditions, effects).
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

@@ -929,46 +929,118 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 37: 6 particle effect presets
+### [x] Wieczór 37: Elemental weapons + particle effects + status effects
 
 ```
-Create 6 reusable particle effect presets in src/app/game/effects/particles.ts.
+Implement elemental weapon variants, particle effects (enemies + weapons), and a multi-effect
+status system on enemies. One enemy can have multiple active effects simultaneously
+(e.g., fire + poison from two different players attacking it).
 
-Use Phaser 3's built-in particle system (this.add.particles or scene.add.particles).
-Note: In Phaser 3.60+ the API is scene.add.particles(x, y, texture, config).
+═══ PART 1: Elemental weapon variants ═══
 
-Create a ParticleManager class with method:
-  playEffect(scene: Phaser.Scene, preset: ParticlePreset, x: number, y: number, followTarget?: Phaser.GameObjects.Sprite): Phaser.GameObjects.Particles.ParticleEmitter
+SERVER (server/src/lootConfig.ts):
+- After rolling base weapon, roll element based on rarity:
+    common (bone_sword):   20% chance of element
+    uncommon (iron_sword): 50% chance of element
+    rare (shadow_blade):   80% chance of element
+- If element rolled: pick random element from ['fire','ice','poison','electric','shadow','holy']
+- Append suffix to item ID: e.g. 'iron_sword' → 'iron_sword_of_fire'
 
-Presets (ParticlePreset type = 'fire' | 'ice' | 'poison' | 'electric' | 'shadow' | 'holy'):
+CLIENT (src/app/game/ui/itemConfig.ts):
+- Add particleEffect?: string to ItemDef
+- Add ELEMENT_MODIFIERS: Record<string, { nameSuffix: string; particleEffect: string; attackBonus: number }>
+  fire:     { nameSuffix: 'of Fire',     particleEffect: 'fire',     attackBonus: 3 }
+  ice:      { nameSuffix: 'of Ice',      particleEffect: 'ice',      attackBonus: 2 }
+  poison:   { nameSuffix: 'of Poison',   particleEffect: 'poison',   attackBonus: 2 }
+  electric: { nameSuffix: 'of Thunder',  particleEffect: 'electric', attackBonus: 4 }
+  shadow:   { nameSuffix: 'of Shadow',   particleEffect: 'shadow',   attackBonus: 5 }
+  holy:     { nameSuffix: 'of Holy',     particleEffect: 'holy',     attackBonus: 6 }
+- Add getItemDef(id: string): ItemDef — parses elemental suffix, builds ItemDef dynamically
+  e.g. 'iron_sword_of_fire' → iron_sword base + fire modifier (name: 'Iron Sword of Fire', attackBonus: 15+3=18)
+- Keep ITEM_MAP for base items, use getItemDef() everywhere else in PlayScene
 
-fire:
-  - texture: small orange/red circle (use Phaser.GameObjects.Graphics to create a 4px circle)
-  - tint: [0xff4400, 0xff8800]
-  - speed: { min: 20, max: 60 }, angle: { min: 250, max: 290 } (upward)
-  - lifespan: 600, scale: { start: 0.5, end: 0 }, quantity: 3, frequency: 100
+═══ PART 2: Particle effects ═══
 
-ice:
-  - tint: [0x88ddff, 0xffffff], speed: { min: 10, max: 30 }
-  - lifespan: 800, scale: { start: 0.3, end: 0 }, quantity: 2
+NEW FILE src/app/game/effects/particles.ts:
 
-poison:
-  - tint: [0x44ff44, 0x228822], angle: { min: 0, max: 360 }
-  - lifespan: 1000, scale: { start: 0.4, end: 0 }, quantity: 1, frequency: 200
+export type ParticlePreset = 'fire' | 'ice' | 'poison' | 'electric' | 'shadow' | 'holy';
 
-electric:
-  - tint: [0xffff00, 0x8888ff], speed: { min: 50, max: 100 }
-  - lifespan: 200, scale: { start: 0.6, end: 0 }, quantity: 5, frequency: 50
+export function createParticleTexture(scene: Phaser.Scene): void
+  - Use Graphics to draw a 4px white circle, generateTexture('particle_dot'), destroy graphics
 
-shadow:
-  - tint: [0x440044, 0x220022], speed: { min: 5, max: 20 }
-  - lifespan: 1500, scale: { start: 0.5, end: 0.1 }, quantity: 1
+export function playEffect(scene, preset, x, y, followTarget: Phaser.GameObjects.Sprite):
+  Phaser.GameObjects.Particles.ParticleEmitter
+  - Continuous emitter, uses follow: followTarget (Phaser 3.60+ native)
+  - Used for: enemy intrinsic effects (fire_hunter, boss_hunter)
 
-holy:
-  - tint: [0xffffaa, 0xffffff], angle: { min: 0, max: 360 }
-  - lifespan: 1000, scale: { start: 0.3, end: 0.8 }, quantity: 2
+export function burstEffect(scene, preset, x, y): void
+  - One-shot explode(N), auto-destroys after 600ms
+  - Used for: weapon hit effects
 
-All presets: if followTarget is provided, update the emitter position in PlayScene.update().
+Particle configs:
+  fire:     tint [0xff4400, 0xff8800], speed 20-60, angle 250-290 (upward), lifespan 600, qty 3, freq 100
+  ice:      tint [0x88ddff, 0xffffff], speed 10-30, lifespan 800, qty 2, freq 150
+  poison:   tint [0x44ff44, 0x228822], angle 0-360, lifespan 1000, qty 1, freq 200
+  electric: tint [0xffff00, 0x8888ff], speed 50-100, lifespan 200, qty 5, freq 50
+  shadow:   tint [0x440044, 0x880088], speed 5-20, lifespan 1500, qty 1, freq 300
+  holy:     tint [0xffffaa, 0xffffff], angle 0-360, lifespan 1000, qty 2, freq 150
+
+═══ PART 3: Multi-effect status system ═══
+
+SERVER (server/src/GameRoom.ts):
+
+1. EnemyState: add @type({ map: "float64" }) statusEffects: MapSchema<float64>
+   - key = effect name ('fire', 'ice', etc.), value = expiry timestamp (Date.now() + duration)
+   - Multiple effects coexist — one per element type, each with its own expiry
+
+2. attack_enemy handler changes:
+   - Parse element from player.equipment["weapon"]: split on '_of_', take second part
+   - If element found, apply status effect:
+       fire:     statusEffects.set('fire',     now + 5000)  — also apply 5 dmg immediately
+       ice:      statusEffects.set('ice',      now + 4000)
+       poison:   statusEffects.set('poison',   now + 8000)
+       electric: statusEffects.set('electric', now + 2000)
+       shadow:   heal attacker +10 HP (instant, no status stored)
+       holy:     +20 bonus damage on this hit (instant, no status stored)
+
+3. In masterTick / tickEnemyAI (runs every 1000ms):
+   - For each alive enemy, iterate statusEffects entries:
+       fire:     deal 5 damage to enemy
+       poison:   deal 3 damage to enemy
+       ice:      velocity multiplied by 0.5 in tickEnemyMovement (check statusEffects.has('ice'))
+       electric: velocity set to 0 in tickEnemyMovement (check statusEffects.has('electric'))
+   - Delete expired effects: if Date.now() > expiry → statusEffects.delete(key)
+   - After processing, broadcast updated hp via enemy_hit if changed
+
+CLIENT (src/app/game/scenes/PlayScene.ts):
+
+1. In create(): call createParticleTexture(this)
+
+2. EnemyData: add
+   - intrinsicEmitter?: Phaser.GameObjects.Particles.ParticleEmitter  (fire_hunter, boss_hunter)
+   - statusEmitters: Map<string, Phaser.GameObjects.Particles.ParticleEmitter>  (applied effects)
+   - activeStatusEffects: Set<string>  (for icon display)
+
+3. addEnemy(): if config.particleEffect → playEffect(..., activeSprite) → store in intrinsicEmitter
+
+4. killEnemy(): destroy intrinsicEmitter + all statusEmitters, then existing cleanup
+
+5. Handle statusEffects from state sync (room.state.enemies.onChange or stats broadcast):
+   - For each effect in enemy.statusEffects not in statusEmitters → start playEffect, add to statusEmitters
+   - For each effect in statusEmitters not in enemy.statusEffects → destroy emitter, remove from map
+   - Update activeStatusEffects set
+
+6. Draw status icons above HP bar in drawEnemyHpBar():
+   - For each active effect, draw small colored circle + emoji label (🔥❄️☠️⚡🌑✨)
+   - Icons stacked horizontally, 14px above HP bar
+   - Colors: fire=#ff4400, ice=#88ddff, poison=#44ff44, electric=#ffff00, shadow=#880088, holy=#ffffaa
+
+7. SPACE attack: get equipped weapon → getItemDef(id)?.particleEffect → burstEffect at attack position
+
+═══ PART 4: boss_hunter gets shadow effect ═══
+
+Update server/src/monsterConfig.ts AND src/app/game/monsterConfig.ts:
+  boss_hunter: add particleEffect: 'shadow'
 
 Confirm when done and show me what was created.
 ```

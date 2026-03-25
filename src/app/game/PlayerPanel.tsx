@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { useSearchParams } from "next/navigation";
 import { getRoom } from "./network/ColyseusClient";
+import { getItemDef } from "./ui/itemConfig";
 
 type Stats = {
   hp: number;
@@ -17,16 +18,6 @@ type Stats = {
   equipment?: Record<string, string>;
 };
 
-// Loot bonuses mirrored from server lootConfig (client-side read-only)
-const LOOT_INFO: Record<string, { name: string; attackBonus: number; defenseBonus: number; rarity: string }> = {
-  bone_sword:    { name: "Bone Sword",    attackBonus: 8,  defenseBonus: 0,  rarity: "common"   },
-  iron_sword:    { name: "Iron Sword",    attackBonus: 15, defenseBonus: 0,  rarity: "uncommon" },
-  shadow_blade:  { name: "Shadow Blade",  attackBonus: 25, defenseBonus: 0,  rarity: "rare"     },
-  leather_armor: { name: "Leather Armor", attackBonus: 0,  defenseBonus: 5,  rarity: "common"   },
-  chain_mail:    { name: "Chain Mail",    attackBonus: 0,  defenseBonus: 10, rarity: "uncommon" },
-  bone_helmet:   { name: "Bone Helmet",   attackBonus: 0,  defenseBonus: 3,  rarity: "common"   },
-  iron_helmet:   { name: "Iron Helmet",   attackBonus: 0,  defenseBonus: 7,  rarity: "uncommon" },
-};
 
 type Position = { x: number; y: number };
 
@@ -100,7 +91,7 @@ function EquipSlot({
 }: {
   symbol: string; color: string; label: string; slot: string; equippedId?: string;
 }) {
-  const info = equippedId ? LOOT_INFO[equippedId] : null;
+  const info = equippedId ? (getItemDef(equippedId) ?? null) : null;
   const rarityColor = info?.rarity === "rare" ? "#FFD700" : info?.rarity === "uncommon" ? "#44ff88" : "#e4e3fe";
 
   function handleUnequip() {
@@ -133,7 +124,7 @@ function EquipSlot({
             {info.name}
           </span>
           <span style={{ fontSize: 7, color: "#46465b", lineHeight: 1, userSelect: "none" }}>
-            {info.attackBonus > 0 ? `+${info.attackBonus} ATK` : `+${info.defenseBonus} DEF`}
+            {(info.attackBonus ?? 0) > 0 ? `+${info.attackBonus} ATK` : `+${info.defenseBonus ?? 0} DEF`}
           </span>
         </>
       ) : (
