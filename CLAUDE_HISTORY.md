@@ -1105,6 +1105,29 @@ Sprawdź PLAN.md pod Wieczór 26.
 
 ---
 
+## Session 37 — 2026-03-25 (Session 21, kontynuacja)
+
+### What was done
+- **Wieczór 42 COMPLETE ✅** — Claude API: 3 pytania doprecyzowujące
+- `@anthropic-ai/sdk` zainstalowany w root `package.json`
+- `src/app/api/forge/clarify/route.ts` (nowy) — `POST /api/forge/clarify`; Clerk auth (401 dla niezalogowanych); wywołuje `claude-sonnet-4-6` z systemowym promptem (kontekst gry, format JSON array 3 pytań, język pl/en); fallback regex parser gdy model doda tekst wokół JSON; zwraca `{ questions: string[] }`
+- `src/app/forge/page.tsx` (przepisany) — 4 stany: `input → loading → questions → error`; spinner podczas oczekiwania na Claude; 3 pytania jako labele + text inputy; przycisk "Generuj modyfikację" aktywny gdy wszystkie odpowiedzi wypełnione (placeholder na W43); przycisk "Zmień opis" wraca do stanu input; obsługa błędów sieciowych
+- `.env.local` — dodano `ANTHROPIC_API_KEY=` (do uzupełnienia przez użytkownika)
+
+### Decisions made
+- Fallback regex parser (`raw.match(/\[[\s\S]*\]/)`): Claude czasem opakowuje JSON w tekst (markdown), fallback wyciąga sam array
+- 4 stany flow zamiast flagi boolean — czytelniejsza logika, łatwo dodać nowe stany w W43
+- `allAnswered` guard na submit — przycisk generowania nieaktywny dopóki wszystkie 3 odpowiedzi nie są wypełnione
+
+### Problems encountered
+- Brak — implementacja czysta, TS bez błędów
+
+### Next step
+**Wieczór 43** — Claude API generuje `ModConfig` JSON na podstawie opisu + odpowiedzi na pytania.
+Pamiętaj: dodać `ANTHROPIC_API_KEY` na Vercel przed deplojem.
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

@@ -1211,7 +1211,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 42: Claude API — 3 clarifying questions
+### [x] Wieczór 42: Claude API — 3 clarifying questions
 
 ```
 Create the first step of the AI mod generation flow: Claude asks 3 clarifying questions.
