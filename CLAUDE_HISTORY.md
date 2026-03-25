@@ -926,6 +926,23 @@ Sprawdź PLAN.md pod Wieczór 26.
 
 ---
 
+## Session 30 — 2026-03-25 (hotfix)
+
+### What was done
+- **Vercel build fix** — `/game` page failed prerendering because `PlayerPanel` uses `useSearchParams()` without `Suspense`
+- `src/app/game/page.tsx` — opakowano `<PlayerPanel />` w `<Suspense fallback={null}>`
+
+### Decisions made
+- Każdy komponent używający `useSearchParams` musi być bezpośrednio opakowany w `Suspense` (lub sam zawierać `Suspense`) — Next.js App Router wymaga tego przy statycznym prerenderowaniu
+
+### Problems encountered
+- `GameHeader` był już opakowany, `PlayerPanel` — nie; Vercel rzucał `Export encountered an error on /game/page`
+
+### Next step
+**Wieczór 33** — Roles (guest vs verified vs group creator).
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-25 (Session 16, W31+W32+extras — Groups, per-group rooms, game header, EventLog, room history, nickname fix)
+2026-03-25 (Session 16+hotfix — Groups, per-group rooms, game header, EventLog, room history, nickname fix; Vercel Suspense fix)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -144,6 +144,10 @@ Gameforge/
 - `src/app/game/scenes/PlayScene.ts` — dispatches `gameRoomInfo`, `gameStats` (with `worldTime`), `gameRoomEvent` window events; `playersOnlineText` hidden
 - `src/app/room-history/page.tsx` — lists archived room event summaries per group
 - Day/night: 4h real-time cycle (`DAY_DURATION=14_400_000ms`), `worldTime` 0–1 sent to client each tick; day count tracked client-side via night→day transitions
+
+### Vercel prerender rule
+- Every component using `useSearchParams()` must be wrapped in `<Suspense>` (directly or internally) — Next.js App Router requires this for static prerendering; missing `Suspense` causes build failure on Vercel
+- `GameHeader` and `PlayerPanel` are both wrapped in `<Suspense fallback={null}>` in `src/app/game/page.tsx`
 
 ### Nickname fix
 - `PhaserGame.tsx` — builds display name from `useUser()`: `firstName lastName` > `username` > email prefix
