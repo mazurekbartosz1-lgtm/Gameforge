@@ -1047,7 +1047,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 38: RuleEngine in Colyseus
+### [x] Wieczór 38: RuleEngine in Colyseus
 
 ```
 Implement a RuleEngine in the Colyseus server that evaluates declarative rules every tick.
@@ -1059,10 +1059,14 @@ export interface Rule {
   trigger: RuleTrigger
   conditions: RuleCondition[]
   effects: RuleEffect[]
+  // For every_Ns trigger:
+  intervalMs?: number        // e.g. 7200000 for 2 hours
+  _nextFireAt?: number       // internal: Date.now() + intervalMs, set by engine
 }
 
 export type RuleTrigger =
-  | 'on_tick'          // evaluated every server tick
+  | 'on_tick'          // evaluated every server tick (~100ms)
+  | 'every_Ns'         // fires once every rule.intervalMs milliseconds
   | 'on_eat'           // when a player eats an item
   | 'on_cook'          // when cooking completes
   | 'on_hunger_low'    // when player.hunger < 20
@@ -1070,25 +1074,38 @@ export type RuleTrigger =
   | 'on_player_join'
 
 export interface RuleCondition {
-  field: string        // e.g. 'player.hunger', 'world.isNight', 'item.type'
+  field: string        // e.g. 'player.hunger', 'world.isNight', 'item.type', 'random'
   operator: '<' | '>' | '==' | '!=' | 'includes'
   value: string | number | boolean
 }
 
 export interface RuleEffect {
   action: 'modify_stat' | 'add_item' | 'spawn_enemy' | 'broadcast_message' | 'set_weather'
-  target: string       // e.g. 'player', 'world'
+  target?: 'player' | 'all_players' | 'world'  // 'all_players' iterates all players in room
   field?: string
   value?: string | number
+  pool?: string[]    // if provided, pick one random element instead of using value
+  qty?: number       // for spawn_enemy: how many to spawn (default 1)
 }
 
 export class RuleEngine {
   private rules: Rule[] = []
 
-  loadRules(rules: Rule[]) { this.rules = rules }
+  loadRules(rules: Rule[]) {
+    this.rules = rules
+    // Initialize _nextFireAt for every_Ns rules
+    const now = Date.now()
+    for (const rule of this.rules) {
+      if (rule.trigger === 'every_Ns' && rule.intervalMs) {
+        rule._nextFireAt = now + rule.intervalMs
+      }
+    }
+  }
 
   evaluate(trigger: RuleTrigger, context: RuleContext): RuleEffect[] {
     // Filter rules by trigger, evaluate conditions against context, return effects
+    // For every_Ns: only fire if Date.now() >= rule._nextFireAt, then advance _nextFireAt
+    // For pool effects: resolve random item from pool before returning
   }
 }
 
@@ -1102,41 +1119,52 @@ export interface RuleContext {
 In server/src/GameRoom.ts:
 1. Instantiate RuleEngine in onCreate().
 2. Load default rules (empty array for now).
-3. Call ruleEngine.evaluate('on_tick', { world: this.state }) in the tick loop.
-4. Apply returned effects to the world state.
-5. Expose a method applyModRules(rules: Rule[]) that replaces active rules —
-   used in Wieczór 47 for live mod application.
+3. In tick loop: call ruleEngine.evaluate('on_tick', { world: this.state })
+   AND ruleEngine.evaluate('every_Ns', { world: this.state }).
+4. Apply returned effects:
+   - modify_stat on player/all_players: clamp to [0, 100]
+   - add_item on player/all_players: add to inventory, send inventory_load
+   - spawn_enemy: call spawnSingleEnemy() qty times
+   - broadcast_message: this.broadcast("rule_message", { text })
+   - set_weather: this.state.weather = value
+5. Expose applyModRules(rules: Rule[]) — calls loadRules, used in Wieczór 47.
 
 Confirm when done and show me what was created.
 ```
 
 ---
 
-### [ ] Wieczór 39: Rule triggers for food
+### [x] Wieczór 39: Rule triggers for food, death and timed loops
 
 ```
-Add food-related rule triggers to the RuleEngine.
+Add food, enemy death and timed loop triggers to the RuleEngine.
 
 In server/src/GameRoom.ts, fire rule triggers at the appropriate moments:
 
 1. 'on_eat' trigger — fire in the 'eat' message handler after applying base food values:
    ruleEngine.evaluate('on_eat', { player, item: { type: itemId, id: itemId } })
-   Apply effects: if effect.action === 'modify_stat' and effect.target === 'player':
-     player[effect.field] = Math.max(0, Math.min(100, player[effect.field] + effect.value))
 
 2. 'on_cook' trigger — fire in cook_bonfire and pot_collect handlers:
    ruleEngine.evaluate('on_cook', { player, item: { type: result } })
 
 3. 'on_hunger_low' trigger — fire in tick() when player.hunger < 20:
    ruleEngine.evaluate('on_hunger_low', { player, world: this.state })
-   (Only fire once per player per minute — add a Map<sessionId, lastFiredAt> throttle.)
+   (Only fire once per player per minute — Map<sessionId, lastFiredAt> throttle.)
 
-Write 3 example Rule objects in server/src/defaultRules.ts to test the engine:
+4. 'on_enemy_death' trigger — fire in the enemy kill handler, pass enemy context:
+   ruleEngine.evaluate('on_enemy_death', { player, enemy, world: this.state })
+   Apply effects including add_item with target 'all_players' and pool support:
+   - target 'player': add item to killer only
+   - target 'all_players': iterate this.state.players, add item to each (random from pool per player)
+   Send inventory_load to each affected client.
 
-Rule 1: on_eat cooked_meat → add_item 'bone' (10% chance — add a condition: random < 0.1)
-Rule 2: on_hunger_low → broadcast_message "You are starving!"
-Rule 3: on_tick (world.isNight) → modify_stat player.sanity -= 0.1 per tick
-  (this overlaps with base sanity drain — demonstrate stacking)
+Write 4 example Rule objects in server/src/defaultRules.ts to test the engine:
+
+Rule 1: on_eat cooked_meat → add_item pool:['bone'] (10% chance — condition: random < 0.1)
+Rule 2: on_hunger_low → broadcast_message "Jesteś głodny!"
+Rule 3: on_tick (world.isNight) → modify_stat all_players sanity -= 0.1 per tick
+Rule 4 (timed loop test): every_Ns intervalMs:60000 (1 min), condition world.isNight==true
+  → spawn_enemy configId:'boss_hunter' qty:1, broadcast_message "Nocny boss nadciąga!"
 
 Load defaultRules in GameRoom.onCreate().
 
@@ -1927,4 +1955,74 @@ Confirm when done and show me what was created.
 
 ---
 
-*End of plan. Total: 59 evenings across 10 weeks.*
+### [ ] Wieczór 60: MonsterConfig v2 — data-driven enemy AI
+
+```
+Rewrite enemy AI to be fully data-driven via MonsterConfig. Currently tickEnemyAI and
+tickEnemyMovement have hardcoded logic. This wieczór makes enemy behavior configurable
+per variant — enabling rule-driven AI modifications in the future.
+
+═══ PART 1: Extend MonsterConfig ═══
+
+In server/src/monsterConfig.ts AND src/app/game/monsterConfig.ts, add to MonsterConfig:
+
+  // Movement & combat params
+  moveSpeed?: number          // default: ENEMY_SPEED constant (currently ~80)
+  visionRange?: number        // tiles — default: 10
+  attackRange?: number        // px — default: ATTACK_RANGE constant
+  fleeThreshold?: number      // 0–1, flee when hp/maxHp < this — default: 0 (never flees)
+
+  // Behavior mode
+  behavior?: 'aggressive' | 'passive' | 'patrol' | 'coward'
+  // aggressive (default): always chases nearest player in visionRange
+  // passive: only attacks if attacked first (track damagedBy Set per enemy)
+  // patrol: random walk when no player in range, chase when player enters visionRange
+  // coward: flees from players (inverse of aggressive)
+
+Update existing variants with explicit values (use current hardcoded constants as defaults
+so behavior is identical to before — no gameplay change unless config is modified):
+  hunter: behavior:'aggressive', moveSpeed:80, visionRange:10, fleeThreshold:0
+  fire_hunter: behavior:'aggressive', moveSpeed:90, visionRange:12, fleeThreshold:0
+  boss_hunter: behavior:'aggressive', moveSpeed:60, visionRange:14, fleeThreshold:0.15
+
+═══ PART 2: Refactor tickEnemyAI in GameRoom.ts ═══
+
+Replace hardcoded logic with config-driven behavior:
+
+function tickEnemyAI(enemy: EnemyState, config: MonsterConfig, players: MapSchema<PlayerState>) {
+  switch (config.behavior ?? 'aggressive') {
+    case 'aggressive': chaseNearest(enemy, config, players); break
+    case 'passive':    if (enemy.damagedBy?.size > 0) chaseNearest(enemy, config, players); break
+    case 'patrol':     patrolOrChase(enemy, config, players); break
+    case 'coward':     fleeFromNearest(enemy, config, players); break
+  }
+  if (config.fleeThreshold && enemy.hp / enemy.maxHp < config.fleeThreshold) {
+    fleeFromNearest(enemy, config, players)
+  }
+}
+
+Extract helpers: chaseNearest, patrolOrChase, fleeFromNearest.
+Use config.moveSpeed instead of ENEMY_SPEED, config.visionRange instead of hardcoded tiles,
+config.attackRange instead of ATTACK_RANGE constant.
+
+Add damagedBy: Set<string> to in-memory enemy tracking (not in schema — no sync needed).
+Populate it in the attack_enemy handler: enemyDamagedBy.get(enemyId)?.add(attackerSessionId).
+
+═══ PART 3: patrol behavior ═══
+
+patrolOrChase: if no player within visionRange → move toward patrolTarget (random point
+within 5 tiles of spawn position). When patrolTarget reached, pick new random patrolTarget.
+Store patrolTarget per enemy in a Map<string, {x,y}> in GameRoom (in-memory).
+
+═══ PART 4: Verify no gameplay regression ═══
+
+All existing variants use 'aggressive' behavior with same speed/range as before.
+Run the game and confirm enemies behave identically to pre-W60 for hunter/fire_hunter/boss_hunter.
+Then manually test: add a temporary 'patrol' skeleton variant in MONSTER_CONFIG and verify patrol.
+
+Confirm when done and show me what was created.
+```
+
+---
+
+*End of plan. Total: 60 evenings across 10 weeks.*

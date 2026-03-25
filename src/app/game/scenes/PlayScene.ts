@@ -640,6 +640,12 @@ export class PlayScene extends Scene {
       window.dispatchEvent(new CustomEvent("gameRoomEvent", { detail: data }));
     });
 
+    room.onMessage("rule_message", (data: { text: string }) => {
+      window.dispatchEvent(new CustomEvent("gameRoomEvent", { detail: {
+        id: `rule_${Date.now()}`, type: "rule", playerName: "⚙ System", message: data.text, timestamp: Date.now(),
+      }}));
+    });
+
     room.onMessage("stats_update", (data: { hp: number; maxHp: number; hunger: number; sanity: number; attack: number; defense: number; nickname: string; isNight: boolean; worldTime: number; equipment?: Record<string, string> }) => {
       window.dispatchEvent(new CustomEvent("gameStats", { detail: data }));
       if (data.equipment) { this.myEquipment = data.equipment; this.invUI.updateEquipment(data.equipment); }

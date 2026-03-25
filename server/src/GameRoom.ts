@@ -5,6 +5,8 @@ import { loadPlayer, savePlayer, deletePlayer, loadWorldSeed, saveWorldSeed, loa
 import { FOOD_CONFIG } from "./foodConfig.js";
 import { LOOT_TABLE, rollDrop, getLootItem } from "./lootConfig.js";
 import { MONSTER_CONFIG } from "./monsterConfig.js";
+import { RuleEngine, type Rule, type RuleEffect } from "./RuleEngine.js";
+import { DEFAULT_RULES } from "./defaultRules.js";
 
 interface GameRoomOptions extends RoomOptions {
   state: WorldState;
@@ -97,6 +99,7 @@ export class WorldState extends Schema {
   @type("float64") worldTime: number = 0; // 0–1 day cycle
   @type("boolean") isNight: boolean = false;
   @type("uint32") mapSeed: number = 0;    // procedural map seed — same for all players in room
+  @type("string")  weather: string = "clear"; // 'clear' | 'rain' | 'storm'
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -235,6 +238,11 @@ export class GameRoom extends Room<GameRoomOptions> {
   /** Accumulated ms since last full game tick (hunger, AI decision, etc.). */
   private gameTickAccum = 0;
 
+  /** Declarative rule engine — evaluates triggers and returns effects. */
+  private ruleEngine = new RuleEngine();
+  /** Throttle for on_hunger_low: sessionId → last fired timestamp. */
+  private hungerLowThrottle = new Map<string, number>();
+
   async onCreate(options: any) {
     this.groupId = options.groupId ?? null;
     const state = new WorldState();
@@ -276,6 +284,7 @@ export class GameRoom extends Room<GameRoomOptions> {
       });
       await Promise.allSettled(saves);
     }, 30_000);
+    this.ruleEngine.loadRules(DEFAULT_RULES);
     console.log(`[GameRoom] created – roomId: ${this.roomId}, seed: ${state.mapSeed}`);
   }
 
@@ -505,6 +514,7 @@ export class GameRoom extends Room<GameRoomOptions> {
 
   async onLeave(client: Client, _code?: number) {
     this.pendingTakeovers.delete(client.sessionId);
+    this.hungerLowThrottle.delete(client.sessionId);
     const player = this.state.players.get(client.sessionId);
     if (player) {
       await this._savePlayerState(player);
@@ -564,6 +574,7 @@ export class GameRoom extends Room<GameRoomOptions> {
       const now = Date.now();
       this.updateWorldTime(now);
       this.drainHungerAndSanity();
+      this.tickRuleEngine();
       this.sendStatsToPlayers();
       this.respawnNodes(now);
       this.tickEnemyAI();
@@ -594,7 +605,125 @@ export class GameRoom extends Room<GameRoomOptions> {
           this.broadcastRoomEvent("death", player.nickname, `☠ ${player.nickname} umarł(a) z głodu`);
         }
       }
+
+      // on_hunger_low trigger — throttled to once per minute per player
+      if (player.hunger < 20) {
+        const now = Date.now();
+        const lastFired = this.hungerLowThrottle.get(player.sessionId) ?? 0;
+        if (now - lastFired > 60_000) {
+          this.hungerLowThrottle.set(player.sessionId, now);
+          const effects = this.ruleEngine.evaluate('on_hunger_low', {
+            player: { hp: player.hp, maxHp: player.maxHp, hunger: player.hunger, sanity: player.sanity, sessionId: player.sessionId },
+            world:  { isNight: this.state.isNight, worldTime: this.state.worldTime, weather: this.state.weather },
+          });
+          if (effects.length > 0) {
+            const c = this.clients.find(c => c.sessionId === player.sessionId);
+            this.applyRuleEffects(effects, { client: c, player });
+          }
+        }
+      }
     });
+  }
+
+  // ─── Rule Engine ──────────────────────────────────────────────────────────
+
+  private tickRuleEngine() {
+    const worldCtx = {
+      isNight: this.state.isNight,
+      worldTime: this.state.worldTime,
+      weather: this.state.weather,
+    };
+    const tickEffects  = this.ruleEngine.evaluate('on_tick',   { world: worldCtx });
+    const timerEffects = this.ruleEngine.evaluate('every_Ns',  { world: worldCtx });
+    const allEffects = [...tickEffects, ...timerEffects];
+    if (allEffects.length > 0) this.applyRuleEffects(allEffects, {});
+  }
+
+  private applyRuleEffects(
+    effects: RuleEffect[],
+    ctx: { client?: Client; player?: PlayerState }
+  ) {
+    for (const effect of effects) {
+      switch (effect.action) {
+
+        case 'modify_stat': {
+          const field = effect.field as 'hp' | 'hunger' | 'sanity';
+          if (!field || !['hp', 'hunger', 'sanity'].includes(field)) break;
+          const delta = typeof effect.value === 'number' ? effect.value : 0;
+          const applyTo = (p: PlayerState) => {
+            const max = field === 'hp' ? p.maxHp : 100;
+            (p as any)[field] = Math.max(0, Math.min(max, (p as any)[field] + delta));
+          };
+          if (effect.target === 'all_players') {
+            this.state.players.forEach(applyTo);
+          } else if (ctx.player) {
+            applyTo(ctx.player);
+          }
+          break;
+        }
+
+        case 'add_item': {
+          const qty = typeof effect.value === 'number' ? effect.value : 1;
+          const pickItem = () =>
+            effect.pool && effect.pool.length > 0
+              ? effect.pool[Math.floor(Math.random() * effect.pool.length)]
+              : (typeof effect.field === 'string' ? effect.field : null);
+          if (effect.target === 'all_players') {
+            this.state.players.forEach((p) => {
+              const itemId = pickItem();
+              if (!itemId) return;
+              for (let i = 0; i < qty; i++) p.inventory.push(itemId);
+              const c = this.clients.find(c => c.sessionId === p.sessionId);
+              c?.send('inventory_load', Array.from(p.inventory));
+            });
+          } else if (ctx.player && ctx.client) {
+            const itemId = pickItem();
+            if (!itemId) break;
+            for (let i = 0; i < qty; i++) ctx.player.inventory.push(itemId);
+            ctx.client.send('inventory_load', Array.from(ctx.player.inventory));
+          }
+          break;
+        }
+
+        case 'spawn_enemy': {
+          const configId = typeof effect.value === 'string' ? effect.value : 'hunter';
+          const count = effect.qty ?? 1;
+          const players: Array<{ x: number; y: number }> = [];
+          this.state.players.forEach(p => { if (p.isOnline) players.push({ x: p.x, y: p.y }); });
+          for (let i = 0; i < count; i++) {
+            const base = players.length > 0
+              ? players[Math.floor(Math.random() * players.length)]
+              : { x: 0, y: 0 };
+            const angle = Math.random() * Math.PI * 2;
+            const dist  = 300 + Math.random() * 300;
+            const ex = base.x + Math.cos(angle) * dist;
+            const ey = base.y + Math.sin(angle) * dist;
+            const id = `rule_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 5)}`;
+            this.spawnSingleEnemy(id, ex, ey, configId);
+          }
+          break;
+        }
+
+        case 'broadcast_message': {
+          const text = typeof effect.value === 'string' ? effect.value : '';
+          if (text) this.broadcast('rule_message', { text });
+          break;
+        }
+
+        case 'set_weather': {
+          const weather = typeof effect.value === 'string' ? effect.value : 'clear';
+          this.state.weather = weather;
+          this.broadcast('weather_change', { weather });
+          break;
+        }
+      }
+    }
+  }
+
+  /** Replace active rules — used by AI mod pipeline (Wieczór 47). */
+  applyModRules(rules: Rule[]) {
+    this.ruleEngine.applyModRules(rules);
+    console.log(`[GameRoom] applyModRules: ${rules.length} rule(s) loaded`);
   }
 
   private recalcStats(player: PlayerState) {
@@ -1242,6 +1371,13 @@ export class GameRoom extends Room<GameRoomOptions> {
       player.hunger = Math.min(100, player.hunger + food.hungerRestore);
       if (food.hpRestore !== 0)
         player.hp = Math.max(0, Math.min(player.maxHp, player.hp + food.hpRestore));
+      // on_eat rule trigger
+      const eatEffects = this.ruleEngine.evaluate('on_eat', {
+        player: { hp: player.hp, maxHp: player.maxHp, hunger: player.hunger, sanity: player.sanity, sessionId: client.sessionId },
+        world:  { isNight: this.state.isNight, worldTime: this.state.worldTime, weather: this.state.weather },
+        item:   { type: data.itemId, id: data.itemId },
+      });
+      if (eatEffects.length > 0) this.applyRuleEffects(eatEffects, { client, player });
       this.sendStatsToPlayers();
       console.log(`[GameRoom] ${player.nickname} ate ${data.itemId} (hunger: ${player.hunger.toFixed(0)}, hp: ${player.hp})`);
       // Persist inventory immediately after eat
@@ -1346,6 +1482,13 @@ export class GameRoom extends Room<GameRoomOptions> {
         }
         // Killing harms sanity
         player.sanity = Math.max(0, player.sanity - SANITY_KILL_PENALTY);
+        // on_enemy_death rule trigger
+        const deathEffects = this.ruleEngine.evaluate('on_enemy_death', {
+          player: { hp: player.hp, maxHp: player.maxHp, hunger: player.hunger, sanity: player.sanity, sessionId: client.sessionId },
+          world:  { isNight: this.state.isNight, worldTime: this.state.worldTime, weather: this.state.weather },
+          enemy:  { id: enemy.id, configId: enemy.configId, hp: 0, maxHp: enemy.maxHp },
+        });
+        if (deathEffects.length > 0) this.applyRuleEffects(deathEffects, { client, player });
         this.sendStatsToPlayers();
         const fog = this.playerFog.get(client.sessionId) ?? [];
         this._savePlayerState(player).catch((e) => console.warn("[DB] kill save error:", e));

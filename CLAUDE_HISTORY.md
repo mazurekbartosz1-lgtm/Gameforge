@@ -1057,6 +1057,33 @@ Sprawdź PLAN.md pod Wieczór 26.
 
 ---
 
+## Session 35 — 2026-03-25 (Session 20)
+
+### What was done
+- **Wieczór 38+39 COMPLETE ✅** — RuleEngine: deklaratywne reguły w Colyseus
+- `server/src/RuleEngine.ts` (nowy) — klasa `RuleEngine`: typy `Rule`/`RuleTrigger`/`RuleCondition`/`RuleEffect`/`RuleContext`; `evaluate(trigger, context)` filtruje reguły, sprawdza warunki (AND, dotted paths, `random`), zwraca efekty; `every_Ns` timer z `_nextFireAt`; `loadRules()` + `applyModRules()` (dla W47 AI pipeline)
+- `server/src/defaultRules.ts` (nowy) — 4 reguły: bone z cooked_meat (10%), hunger warning broadcast, night sanity drain all_players, every 60s w nocy spawn boss_hunter
+- `server/src/GameRoom.ts` — `WorldState.weather: string = "clear"`; import RuleEngine + DEFAULT_RULES; pola `ruleEngine` + `hungerLowThrottle`; `loadRules(DEFAULT_RULES)` w onCreate; `tickRuleEngine()` w masterTick (między drain a sendStats); metody `tickRuleEngine()`, `applyRuleEffects()`, publiczne `applyModRules()`; trigger `on_eat` w eat handler; trigger `on_hunger_low` (throttle 1/min) w drainHungerAndSanity; trigger `on_enemy_death` z enemy context w attack_enemy; cleanup hungerLowThrottle w onLeave
+- `src/app/game/scenes/PlayScene.ts` — handler `rule_message` → dispatchEvent `gameRoomEvent` (type:"rule") → widoczne w EventLog
+- `PLAN.md` — W38/W39 zaktualizowane o: `every_Ns`, `qty` w spawn_enemy, `target:'all_players'`, `pool:string[]`, `on_enemy_death`; dodany W60 (MonsterConfig v2 + data-driven AI behaviors)
+
+### Decisions made
+- `pool[]` rozwiązywany w `applyRuleEffects` per-target (nie w evaluate) — każdy gracz dostaje inny losowy item z puli
+- Boss spawuje blisko losowego gracza online (300–600px) — jeden boss na pokój per trigger, nie per gracz
+- `on_tick` reguły modyfikują statystyki bez dodatkowego sendStats — tick i tak wywołuje sendStatsToPlayers zaraz po
+- `hungerLowThrottle` czyszczony w onLeave — brak wycieków pamięci przy wielu sesjach
+- Dodano W60 (MonsterConfig v2 + data-driven AI) do PLAN.md jako ostatni wieczór (po W59)
+
+### Problems encountered
+- Brak — kompilacja czysta po obu stronach (server tsc + Next.js noEmit)
+- Testowo zmieniono DAY_DURATION na 120_000ms (2 min) — przywrócono do 14_400_000 po teście
+- Reguły działały poprawnie: "Nocny boss nadciąga!" i "Ktoś jest głodny!" widoczne w EventLog
+
+### Next step
+**Wieczór 40** — Visual variant system test: 5 wariantów wrogów (orc base, fire_orc, ice_orc, skeleton base, shadow_skeleton) z Pixel Crawler sprite'ami.
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,
