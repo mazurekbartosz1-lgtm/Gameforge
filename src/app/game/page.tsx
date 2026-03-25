@@ -25,7 +25,9 @@ export default function GamePage() {
           </div>
           <EventLog />
         </div>
-        <PlayerPanel />
+        <Suspense fallback={null}>
+          <PlayerPanel />
+        </Suspense>
       </div>
     </div>
   );
