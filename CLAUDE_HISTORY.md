@@ -884,6 +884,48 @@ Sprawdź PLAN.md pod Wieczór 26.
 
 ---
 
+## Session 29 — 2026-03-25 (Session 16)
+
+### What was done
+- **Wieczór 31 COMPLETE ✅** — Group creation API (already in previous session log, repeated here for continuity)
+- **Wieczór 32 COMPLETE ✅** — Join by link + join by code; per-group Colyseus rooms; game header; EventLog; room history
+- `src/app/join/[code]/page.tsx` — client component, calls `/api/groups/join`, redirects to `/game?groupId=...&groupName=...`
+- `src/app/HomeAuth.tsx` — GroupSection: list of user's groups (PLAY buttons), join by code form, create group form
+- `server/src/index.ts` — `filterBy(["groupId"])` for per-group room isolation; archive cron every 15min
+- `server/src/GameRoom.ts` — `groupId` field; deterministic map seed from groupId hash; `player_room_states` overlay on join (clear global inventory, load room-specific); `broadcastRoomEvent()`; death events on hunger drain and enemy attack; loot events for uncommon/rare drops; `DAY_DURATION=14_400_000ms` (4h); `worldTime` in `stats_update`; `_savePlayerState()` routes to `saveRoomState` or `savePlayer`
+- `server/src/db.ts` — `loadRoomState`, `saveRoomState`, `insertRoomEvent`, `archiveOldEvents`; `nickname` in `savePlayer` update
+- `src/app/game/GameHeader.tsx` — 44px top HUD: room name, online count, day/night cycle + progress bar, day counter, HISTORIA link, leave button
+- `src/app/game/EventLog.tsx` — 110px bar below game, `gameRoomEvent` window events, max 40 entries, color-coded
+- `src/app/game/page.tsx` — new layout: header + row(game_column + PlayerPanel); game_column = game-container + EventLog
+- `src/app/game/PlayerPanel.tsx` — removed ROOM INFO, reduced sizes, no scroll
+- `src/app/game/scenes/PlayScene.ts` — dispatches `gameRoomInfo`/`gameStats`/`gameRoomEvent` window events; `playersOnlineText` hidden
+- `src/app/room-history/page.tsx` — lists room_history entries per group
+- `src/app/api/room-history/route.ts` — GET room history
+- **Nickname fix** — `PhaserGame.tsx` builds Clerk display name; `GameRoom.ts` onJoin uses Clerk name with priority over DB
+- **Room history back-button fix** — `groupName` passed through header → history URL → back-to-game link so same room is rejoined
+- Supabase SQL executed: `player_room_states`, `room_events`, `room_history` tables
+
+### Decisions made
+- `filterBy(["groupId"])` — each unique groupId gets its own Colyseus room; guests share rooms without groupId
+- Guests join least-populated existing room via `joinById`; if none exist, create temp room via `joinOrCreate` (no error)
+- `player_room_states` stores per-room `(player_id, group_id, x, y, inventory)` — character is bound to the room
+- ArraySchema MUST be cleared in-place (`splice`) — replacing with `new ArraySchema()` breaks Colyseus schema tracking
+- Deterministic map seed: hash groupId to int → unique reproducible map per group; shared rooms use global seed
+- Day counter tracked client-side via night→day transitions (not stored in DB)
+- `room_events` TTL = 1h, then archived to `room_history` (top 50 events per period); cron every 15min
+
+### Problems encountered
+- `auth()` in API routes required `clerkMiddleware()` in `src/middleware.ts` — file was missing, added it
+- Supabase tables used `player_id UUID` (FK to players) not `clerk_id TEXT` — adapted API to look up player UUID first
+- `new ArraySchema()` on inventory clear broke Colyseus schema sync — fixed with `splice(0, 1)` loop
+- After enemy kill, inventory not updating client-side — fixed by adding `client.send("inventory_load", ...)` post-drop
+- `groupName` not carried through HISTORIA link → back to game — fixed by passing it in all URL params
+
+### Next step
+**Wieczór 33** — Roles (guest vs verified vs group creator): restrict group management to creator, show role badges in PlayerPanel.
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

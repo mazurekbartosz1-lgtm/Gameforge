@@ -3,6 +3,7 @@ import { Server, matchMaker } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { Encoder } from "@colyseus/schema";
 import { GameRoom } from "./GameRoom.js";
+import { archiveOldEvents } from "./db.js";
 import type { Request, Response, NextFunction } from "express";
 
 // Dense resource nodes exceed default buffer — increase to 256KB
@@ -22,7 +23,7 @@ app.use((_req: Request, res: Response, next: NextFunction) => {
 
 const gameServer = new Server({ transport });
 
-gameServer.define("game_room", GameRoom);
+gameServer.define("game_room", GameRoom).filterBy(["groupId"]);
 
 // Health endpoint — used by /status page
 app.get("/health", async (_req: Request, res: Response) => {
@@ -45,6 +46,9 @@ app.get("/health", async (_req: Request, res: Response) => {
     totalGuests,
   });
 });
+
+// Archive events older than 1h every 15 minutes
+setInterval(() => archiveOldEvents(), 15 * 60 * 1000);
 
 gameServer.listen(PORT, "0.0.0.0").then(() => {
   console.log(`[Colyseus] Listening on ws://0.0.0.0:${PORT}`);

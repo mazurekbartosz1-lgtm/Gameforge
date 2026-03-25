@@ -1,7 +1,7 @@
 "use client";
 
 import { useUser, useSession, useClerk, SignIn } from "@clerk/nextjs";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 const S = {
   display: "var(--font-display), 'Space Grotesk', sans-serif",
@@ -15,6 +15,168 @@ function formatDuration(ms: number): string {
   if (hours > 0) return `${hours} godz. ${minutes} min.`;
   if (minutes > 0) return `${minutes} min.`;
   return "mniej niż minutę";
+}
+
+interface Group {
+  id: string;
+  name: string;
+  code: string;
+  role: string;
+}
+
+function GroupSection() {
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [joinCode, setJoinCode] = useState("");
+  const [newName, setNewName] = useState("");
+  const [mode, setMode] = useState<"idle" | "join" | "create">("idle");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch("/api/groups").then((r) => r.json()).then((data) => {
+      if (Array.isArray(data)) setGroups(data);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (mode !== "idle") setTimeout(() => inputRef.current?.focus(), 50);
+  }, [mode]);
+
+  async function handleJoin() {
+    if (!joinCode.trim()) return;
+    setBusy(true); setMsg("");
+    const res = await fetch("/api/groups/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: joinCode.trim() }),
+    }).then((r) => r.json());
+    setBusy(false);
+    if (res.error) { setMsg(res.error); return; }
+    window.location.href = `/game?groupId=${res.id}&groupName=${encodeURIComponent(res.name)}`;
+  }
+
+  async function handleCreate() {
+    if (!newName.trim()) return;
+    setBusy(true); setMsg("");
+    const res = await fetch("/api/groups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newName.trim() }),
+    }).then((r) => r.json());
+    setBusy(false);
+    if (res.error) { setMsg(res.error); return; }
+    setGroups((prev) => [...prev, { ...res, role: "owner" }]);
+    setMode("idle");
+    setNewName("");
+  }
+
+  const inputStyle: React.CSSProperties = {
+    background: "rgba(0,0,0,0.4)",
+    border: "1px solid rgba(255,140,0,0.4)",
+    color: "#e4e3fe",
+    fontFamily: S.body,
+    fontSize: 12,
+    padding: "6px 8px",
+    width: "100%",
+    boxSizing: "border-box",
+    outline: "none",
+  };
+
+  const btnStyle = (accent: boolean): React.CSSProperties => ({
+    background: accent ? "linear-gradient(to right, #FF8C00, #CC7000)" : "rgba(0,0,0,0.3)",
+    border: accent ? "none" : "1px solid rgba(255,140,0,0.3)",
+    color: accent ? "#2a1600" : "#FF8C00",
+    fontFamily: S.display,
+    fontWeight: 900,
+    fontSize: 10,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase" as const,
+    padding: "7px 12px",
+    cursor: "pointer",
+    whiteSpace: "nowrap" as const,
+  });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 4 }}>
+      {/* Divider */}
+      <div style={{ height: 1, background: "rgba(255,140,0,0.15)" }} />
+
+      {/* Group list */}
+      {groups.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {groups.map((g) => (
+            <div key={g.id} style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              background: "rgba(0,0,0,0.3)",
+              border: "1px solid rgba(255,140,0,0.15)",
+              padding: "6px 8px",
+            }}>
+              <div>
+                <span style={{ fontFamily: S.display, color: "#e4e3fe", fontSize: 11, fontWeight: 700 }}>{g.name}</span>
+                <span style={{ fontFamily: S.body, color: "rgba(169,169,194,0.5)", fontSize: 9, marginLeft: 6 }}>{g.code}</span>
+              </div>
+              <a href={`/game?groupId=${g.id}&groupName=${encodeURIComponent(g.name)}`} style={{
+                ...btnStyle(true),
+                fontSize: 9,
+                padding: "4px 10px",
+                textDecoration: "none",
+                display: "inline-block",
+              }}>PLAY</a>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Action buttons */}
+      {mode === "idle" && (
+        <div style={{ display: "flex", gap: 6 }}>
+          <button style={{ ...btnStyle(false), flex: 1 }} onClick={() => setMode("join")}>+ Dołącz</button>
+          <button style={{ ...btnStyle(false), flex: 1 }} onClick={() => setMode("create")}>+ Nowa</button>
+        </div>
+      )}
+
+      {/* Join form */}
+      {mode === "join" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input
+              ref={inputRef}
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+              onKeyDown={(e) => e.key === "Enter" && handleJoin()}
+              placeholder="KOD GRUPY"
+              maxLength={8}
+              style={{ ...inputStyle, flex: 1 }}
+            />
+            <button style={btnStyle(true)} onClick={handleJoin} disabled={busy}>OK</button>
+            <button style={btnStyle(false)} onClick={() => { setMode("idle"); setMsg(""); }}>✕</button>
+          </div>
+          {msg && <p style={{ fontFamily: S.body, color: "#ff6666", fontSize: 10, margin: 0 }}>{msg}</p>}
+        </div>
+      )}
+
+      {/* Create form */}
+      {mode === "create" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input
+              ref={inputRef}
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+              placeholder="NAZWA GRUPY"
+              maxLength={32}
+              style={{ ...inputStyle, flex: 1 }}
+            />
+            <button style={btnStyle(true)} onClick={handleCreate} disabled={busy}>OK</button>
+            <button style={btnStyle(false)} onClick={() => { setMode("idle"); setMsg(""); }}>✕</button>
+          </div>
+          {msg && <p style={{ fontFamily: S.body, color: "#ff6666", fontSize: 10, margin: 0 }}>{msg}</p>}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function LoggedIn() {
@@ -117,6 +279,8 @@ function LoggedIn() {
       >
         ⚔ ENTER THE GAME
       </a>
+
+      <GroupSection />
 
       {/* Quest tracker decoration */}
       <div style={{ paddingTop: 4 }}>

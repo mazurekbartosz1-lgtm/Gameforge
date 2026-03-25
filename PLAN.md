@@ -844,7 +844,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 32: Join by link + join by code on start screen
+### [x] Wieczór 32: Join by link + join by code on start screen
 
 ```
 Implement the group joining flow in the Next.js frontend.

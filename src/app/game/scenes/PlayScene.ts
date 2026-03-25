@@ -277,7 +277,7 @@ export class PlayScene extends Scene {
 
     // ── UI overlay ─────────────────────────────────────────────────────────
     const ts = { fontSize: "12px", color: "#ffffff", backgroundColor: "#00000088", padding: { x: 6, y: 3 } };
-    this.playersOnlineText = this.add.text(8, 8, "Players online: 1", ts).setScrollFactor(0).setDepth(20);
+    this.playersOnlineText = this.add.text(8, 8, "", ts).setScrollFactor(0).setDepth(20).setVisible(false);
     this.sessionIdText = this.add
       .text(792, 8, this.room?.sessionId ?? "—", { fontSize: "10px", color: "#aaaaaa", backgroundColor: "#00000066", padding: { x: 4, y: 2 } })
       .setOrigin(1, 0).setScrollFactor(0).setDepth(20);
@@ -428,6 +428,7 @@ export class PlayScene extends Scene {
       players.forEach((p) => this.addRemotePlayer(p.sessionId, p));
       this.playerCount = 1 + players.length;
       this.playersOnlineText.setText(`Players online: ${this.playerCount}`);
+      window.dispatchEvent(new CustomEvent("gameRoomInfo", { detail: { playerCount: this.playerCount, roomId: room.roomId } }));
     });
 
     room.onMessage("spawn_at", (data: { x: number; y: number }) => {
@@ -471,6 +472,7 @@ export class PlayScene extends Scene {
       this.addRemotePlayer(p.sessionId, p);
       this.playerCount++;
       this.playersOnlineText.setText(`Players online: ${this.playerCount}`);
+      window.dispatchEvent(new CustomEvent("gameRoomInfo", { detail: { playerCount: this.playerCount, roomId: room.roomId } }));
     });
 
     room.onMessage("player_move", (data: { sessionId: string; x: number; y: number; animKey: string }) => {
@@ -489,6 +491,7 @@ export class PlayScene extends Scene {
       this.remotePlayers.delete(data.sessionId);
       this.playerCount = Math.max(1, this.playerCount - 1);
       this.playersOnlineText.setText(`Players online: ${this.playerCount}`);
+      window.dispatchEvent(new CustomEvent("gameRoomInfo", { detail: { playerCount: this.playerCount, roomId: room.roomId } }));
     });
 
     room.onMessage("resources_init", (nodes: ResourceNodeData[]) => {
@@ -590,7 +593,11 @@ export class PlayScene extends Scene {
       this.showPickupText(this.px, this.py - 50, `-${data.damage} HP`);
     });
 
-    room.onMessage("stats_update", (data: { hp: number; maxHp: number; hunger: number; sanity: number; attack: number; defense: number; nickname: string; isNight: boolean; equipment?: Record<string, string> }) => {
+    room.onMessage("room_event", (data: { id: string; type: string; playerName: string; message: string; timestamp: number }) => {
+      window.dispatchEvent(new CustomEvent("gameRoomEvent", { detail: data }));
+    });
+
+    room.onMessage("stats_update", (data: { hp: number; maxHp: number; hunger: number; sanity: number; attack: number; defense: number; nickname: string; isNight: boolean; worldTime: number; equipment?: Record<string, string> }) => {
       window.dispatchEvent(new CustomEvent("gameStats", { detail: data }));
       if (data.equipment) this.invUI.updateEquipment(data.equipment);
     });

@@ -135,6 +135,94 @@ export async function saveDeadResources(deadTrees: string[], deadRocks: string[]
   }
 }
 
+// ─── Room events ─────────────────────────────────────────────────────────────
+
+export async function insertRoomEvent(
+  roomId: string, groupId: string | null,
+  eventType: string, playerName: string, message: string
+): Promise<void> {
+  try {
+    const { error } = await supabaseAdmin.from("room_events").insert({
+      room_id: roomId, group_id: groupId ?? null, event_type: eventType, player_name: playerName, message,
+    });
+    if (error) console.warn("[DB] insertRoomEvent error:", error.message);
+  } catch (err) { console.warn("[DB] insertRoomEvent exception:", err); }
+}
+
+export async function archiveOldEvents(): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { data: old, error: fetchErr } = await supabaseAdmin
+      .from("room_events").select("*").lt("created_at", cutoff);
+    if (fetchErr || !old?.length) return;
+
+    // Group by room_id+group_id
+    const groups = new Map<string, typeof old>();
+    for (const ev of old) {
+      const key = `${ev.room_id}::${ev.group_id ?? ""}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(ev);
+    }
+
+    for (const [, events] of groups) {
+      const first = events[0];
+      const top_events = events.slice(0, 50).map(e => ({
+        type: e.event_type, player: e.player_name, message: e.message, time: e.created_at,
+      }));
+      await supabaseAdmin.from("room_history").insert({
+        room_id: first.room_id,
+        group_id: first.group_id ?? null,
+        events_count: events.length,
+        top_events,
+        period_start: events[events.length - 1].created_at,
+        period_end: events[0].created_at,
+      });
+    }
+
+    const ids = old.map(e => e.id);
+    await supabaseAdmin.from("room_events").delete().in("id", ids);
+    console.log(`[DB] Archived ${old.length} room events`);
+  } catch (err) { console.warn("[DB] archiveOldEvents exception:", err); }
+}
+
+// ─── Per-room player state ────────────────────────────────────────────────────
+
+interface RoomStateRow {
+  player_id: string;
+  group_id: string;
+  x: number;
+  y: number;
+  inventory: string[];
+}
+
+export async function loadRoomState(playerId: string, groupId: string): Promise<RoomStateRow | null> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("player_room_states")
+      .select("*")
+      .eq("player_id", playerId)
+      .eq("group_id", groupId)
+      .maybeSingle();
+    if (error) { console.warn("[DB] loadRoomState error:", error.message); return null; }
+    return data as RoomStateRow | null;
+  } catch (err) {
+    console.warn("[DB] loadRoomState exception:", err);
+    return null;
+  }
+}
+
+export async function saveRoomState(playerId: string, groupId: string, player: PlayerState): Promise<void> {
+  try {
+    const inventory = Array.from(player.inventory);
+    const { error } = await supabaseAdmin
+      .from("player_room_states")
+      .upsert({ player_id: playerId, group_id: groupId, x: player.x, y: player.y, inventory, updated_at: new Date().toISOString() });
+    if (error) console.warn("[DB] saveRoomState error:", error.message);
+  } catch (err) {
+    console.warn("[DB] saveRoomState exception:", err);
+  }
+}
+
 // ─── Player persistence ───────────────────────────────────────────────────────
 
 export async function deletePlayer(userId: string): Promise<void> {
@@ -164,6 +252,7 @@ export async function savePlayer(player: PlayerState, fog: string[] = []): Promi
     const { error } = await supabaseAdmin
       .from("players")
       .update({
+        nickname: player.nickname,
         x: player.x,
         y: player.y,
         hp: player.hp,

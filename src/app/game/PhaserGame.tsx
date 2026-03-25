@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
 import type { Game } from "phaser";
 
 export default function PhaserGame() {
   const initialized = useRef(false);
   const gameRef = useRef<Game | null>(null);
   const { getToken } = useAuth();
+  const { user } = useUser();
 
   useEffect(() => {
     if (initialized.current) return;
@@ -21,9 +22,19 @@ export default function PhaserGame() {
       // Get Clerk JWT token (null if user not signed in)
       const token = await getToken().catch(() => null);
 
+      // Build display name from Clerk user data
+      const nickname = user
+        ? (user.firstName
+            ? `${user.firstName}${user.lastName ? " " + user.lastName : ""}`
+            : user.username ?? user.emailAddresses[0]?.emailAddress?.split("@")[0] ?? undefined)
+        : undefined;
+
+      // Read groupId from URL ?groupId=... if present
+      const groupId = new URLSearchParams(window.location.search).get("groupId") ?? undefined;
+
       // Connect to Colyseus before starting Phaser so getRoom() works in PlayScene
       try {
-        await connectRoom(token ?? undefined);
+        await connectRoom(token ?? undefined, nickname, groupId);
       } catch (err) {
         console.warn("Colyseus connection failed (offline?):", err);
       }
@@ -38,7 +49,7 @@ export default function PhaserGame() {
         audio: { noAudio: true },
         scale: {
           mode: Scale.FIT,
-          autoCenter: Scale.CENTER_BOTH,
+          autoCenter: Scale.CENTER_HORIZONTALLY,
         },
         scene: [PlayScene],
       });

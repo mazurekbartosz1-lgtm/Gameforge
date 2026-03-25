@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useUser, useClerk } from "@clerk/nextjs";
+import { useSearchParams } from "next/navigation";
 import { getRoom } from "./network/ColyseusClient";
 
 type Stats = {
@@ -61,7 +62,7 @@ function StatBar({ value, max, color, label }: { value: number; max: number; col
           {Math.floor(value)}<span style={{ color: "#46465b" }}>/{max}</span>
         </span>
       </div>
-      <div style={{ height: 6, background: "#16172e", overflow: "hidden" }}>
+      <div style={{ height: 4, background: "#16172e", overflow: "hidden" }}>
         <div style={{ height: "100%", width: `${pct}%`, background: color, transition: "width 0.4s ease" }} />
       </div>
     </div>
@@ -81,14 +82,14 @@ function CombatTile({
       borderRight: `2px solid ${accentColor}`,
       borderBottom: `1px solid ${dimColor}`,
       borderLeft: `1px solid ${dimColor}`,
-      padding: "8px 6px",
+      padding: "6px 4px",
       display: "flex",
       flexDirection: "column",
       alignItems: "center",
       gap: 2,
     }}>
       <span style={{ fontFamily: S.body, color: "#46465b", fontSize: 8, textTransform: "uppercase", letterSpacing: "0.1em" }}>{label}</span>
-      <span style={{ fontFamily: S.display, fontSize: 20, fontWeight: 900, color: accentColor, lineHeight: 1 }}>{value}</span>
+      <span style={{ fontFamily: S.display, fontSize: 16, fontWeight: 900, color: accentColor, lineHeight: 1 }}>{value}</span>
       {warning}
     </div>
   );
@@ -136,7 +137,7 @@ function EquipSlot({
           </span>
         </>
       ) : (
-        <span style={{ fontSize: 18, color, lineHeight: 1, userSelect: "none" }}>{symbol}</span>
+        <span style={{ fontSize: 14, color, lineHeight: 1, userSelect: "none" }}>{symbol}</span>
       )}
     </div>
   );
@@ -145,19 +146,13 @@ function EquipSlot({
 export default function PlayerPanel() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [pos, setPos] = useState<Position>({ x: 0, y: 0 });
-  const dayRef = useRef(1);
-  const prevIsNightRef = useRef<boolean | null>(null);
   const { isLoaded, isSignedIn, user } = useUser();
   const { openSignIn } = useClerk();
+  const searchParams = useSearchParams();
+  const groupName = searchParams.get("groupName");
 
   useEffect(() => {
-    const onStats = (e: Event) => {
-      const data = (e as CustomEvent<Stats>).detail;
-      // Increment day on night→day transition
-      if (prevIsNightRef.current === true && !data.isNight) dayRef.current += 1;
-      prevIsNightRef.current = data.isNight;
-      setStats(data);
-    };
+    const onStats = (e: Event) => setStats((e as CustomEvent<Stats>).detail);
     const onPos = (e: Event) => setPos((e as CustomEvent<Position>).detail);
     window.addEventListener("gameStats", onStats);
     window.addEventListener("gamePosition", onPos);
@@ -176,7 +171,7 @@ export default function PlayerPanel() {
   const displayName = (clerkName ?? stats?.nickname ?? "Guest").toUpperCase();
   const isGuest = isLoaded && !isSignedIn;
   const sanityLow = (stats?.sanity ?? 100) <= 0;
-  const day = dayRef.current;
+
 
   return (
     <div style={{
@@ -188,12 +183,11 @@ export default function PlayerPanel() {
       borderLeft: "2px solid #16172e",
       display: "flex",
       flexDirection: "column",
-      overflowY: "auto",
-      overflowX: "hidden",
+      overflow: "hidden",
     }}>
 
       {/* ── OPERATOR header ── */}
-      <div style={{ padding: "10px 12px", borderBottom: "1px solid #16172e" }}>
+      <div style={{ padding: "7px 10px", borderBottom: "1px solid #16172e" }}>
         <div style={{ fontFamily: S.body, color: "#46465b", fontSize: 7, textTransform: "uppercase", letterSpacing: "0.22em", marginBottom: 4 }}>
           OPERATOR
         </div>
@@ -212,11 +206,6 @@ export default function PlayerPanel() {
           }}>
             {displayName}
           </span>
-          {stats != null && (
-            <span style={{ fontFamily: S.body, fontSize: 9, color: "#FF8C00", fontWeight: 700, whiteSpace: "nowrap" }}>
-              {stats.isNight ? `NIGHT ${day} 🌙` : `DAY ${day} ☀`}
-            </span>
-          )}
         </div>
         {isGuest && (
           <button
@@ -242,24 +231,24 @@ export default function PlayerPanel() {
       </div>
 
       {/* ── TACTICAL_MAP (minimap) ── */}
-      <div style={{ padding: "8px 12px", borderBottom: "1px solid #16172e" }}>
+      <div style={{ padding: "6px 10px", borderBottom: "1px solid #16172e" }}>
         <SectionLabel>TACTICAL_MAP</SectionLabel>
-        <div style={{ marginTop: 6, border: "1px solid rgba(255,140,0,0.25)", background: "#000", lineHeight: 0 }}>
+        <div style={{ marginTop: 4, border: "1px solid rgba(255,140,0,0.25)", background: "#000", lineHeight: 0 }}>
           <canvas
             id="minimap-canvas"
             width={160}
-            height={120}
+            height={100}
             style={{ width: "100%", display: "block", imageRendering: "pixelated" }}
           />
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
-          <span style={{ fontFamily: S.display, color: "#46465b", fontSize: 8 }}>X {pos.x}</span>
-          <span style={{ fontFamily: S.display, color: "#46465b", fontSize: 8 }}>Y {pos.y}</span>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
+          <span style={{ fontFamily: S.display, color: "#46465b", fontSize: 7 }}>X {pos.x}</span>
+          <span style={{ fontFamily: S.display, color: "#46465b", fontSize: 7 }}>Y {pos.y}</span>
         </div>
       </div>
 
       {/* ── STATS ── */}
-      <div style={{ padding: "8px 12px", borderBottom: "1px solid #16172e", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ padding: "6px 10px", borderBottom: "1px solid #16172e", display: "flex", flexDirection: "column", gap: 5 }}>
         <SectionLabel>STATS</SectionLabel>
         <StatBar label="HP"     value={stats?.hp     ?? 100} max={stats?.maxHp ?? 100} color="#f87171" />
         <StatBar label="HUNGER" value={stats?.hunger  ?? 100} max={100}                color="#fb923c" />
@@ -267,9 +256,9 @@ export default function PlayerPanel() {
       </div>
 
       {/* ── COMBAT ── */}
-      <div style={{ padding: "8px 12px", borderBottom: "1px solid #16172e", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ padding: "6px 10px", borderBottom: "1px solid #16172e", display: "flex", flexDirection: "column", gap: 5 }}>
         <SectionLabel>COMBAT</SectionLabel>
-        <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ display: "flex", gap: 5 }}>
           <CombatTile
             label="ATAK"
             value={stats?.attack ?? 5}
@@ -289,9 +278,9 @@ export default function PlayerPanel() {
       </div>
 
       {/* ── EQUIPMENT ── */}
-      <div style={{ padding: "8px 12px", borderBottom: "1px solid #16172e", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ padding: "6px 10px", borderBottom: "1px solid #16172e", display: "flex", flexDirection: "column", gap: 5 }}>
         <SectionLabel>EQUIPMENT</SectionLabel>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
           <EquipSlot symbol="✕" color="#FF8C00" label="Weapon" slot="weapon" equippedId={stats?.equipment?.weapon} />
           <EquipSlot symbol="◆" color="#00e3fd" label="Armor"  slot="armor"  equippedId={stats?.equipment?.armor}  />
           <EquipSlot symbol="◉" color="#f183ff" label="Helmet" slot="helmet" equippedId={stats?.equipment?.helmet} />
@@ -300,15 +289,15 @@ export default function PlayerPanel() {
       </div>
 
       {/* ── QUEST_OBJ ── */}
-      <div style={{ padding: "8px 12px", marginTop: "auto" }}>
+      <div style={{ padding: "6px 10px" }}>
         <SectionLabel>QUEST_OBJ</SectionLabel>
-        <div style={{ marginTop: 6, height: 2, background: "#16172e", overflow: "hidden" }}>
+        <div style={{ marginTop: 4, height: 2, background: "#16172e", overflow: "hidden" }}>
           <div style={{ height: "100%", width: "50%", background: "linear-gradient(to right, #FF8C00, #00e3fd, #f183ff)" }} />
         </div>
-        <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
-          <span style={{ color: "#FF8C00", fontSize: 10 }}>★</span>
-          <span style={{ color: "#FF8C00", fontSize: 10 }}>★</span>
-          <span style={{ color: "#46465b",  fontSize: 10 }}>☆</span>
+        <div style={{ display: "flex", gap: 4, marginTop: 3 }}>
+          <span style={{ color: "#FF8C00", fontSize: 9 }}>★</span>
+          <span style={{ color: "#FF8C00", fontSize: 9 }}>★</span>
+          <span style={{ color: "#46465b",  fontSize: 9 }}>☆</span>
         </div>
       </div>
 

@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-24 (Session 15, W27 — Drop mechanic, ESC closes inventory, resource generation fix)
+2026-03-25 (Session 16, W31+W32+extras — Groups, per-group rooms, game header, EventLog, room history, nickname fix)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -33,6 +33,8 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ Wieczór 25 (Session 12+13): Inventory UI — hotbar 8 slotów + panel 4×5 [I], numerki 1–8, kliknięcie/E eat; guest persistence (guestId sessionStorage, DB save/load, F5 restore); stale session race condition fix
 - ✅ Wieczór 26 (Session 14): Enemy drop system — loot table (7 gear items), equip/unequip/destroy, side info modal z porównaniem statystyk
 - ✅ Wieczór 27 (Session 15): Drop mechanic — wyrzucanie itemów na ziemię, pickup przez E, sprite kółko z symbolem; ESC zamyka inventory; fix resource generation przy spawn_at
+- ✅ Wieczór 31 (Session 16): Group creation API — POST/GET `/api/groups`, POST `/api/groups/join`; `src/middleware.ts` + `src/lib/supabase.ts`
+- ✅ Wieczór 32 (Session 16): Join by link + join by code — `src/app/join/[code]/page.tsx`; `HomeAuth.tsx` GroupSection; per-group Colyseus rooms via `filterBy(["groupId"])`; `player_room_states` per-room character state; deterministic map seed per group; game header (day/night cycle, room name, online count); `EventLog`; `/room-history` page; Clerk display name as player nickname
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
@@ -116,6 +118,37 @@ Gameforge/
 - **Fix 1:** Flagi `deadTreesInitDone`/`deadRocksInitDone` — `spawn_at` handler generuje zasoby tylko gdy dead-state lists są gotowe
 - **Fix 2:** `dead_trees_init`, `dead_rocks_init`, `dead_food_init` generują wokół `Math.floor(this.px / TILE_SIZE), Math.floor(this.py / TILE_SIZE)` zamiast `(0, 0)`
 - **Fix 3:** `spawn_at` handler po ustawieniu pozycji wywołuje generate dla każdego typu zasobu (jeśli odpowiedni init już się zakończył)
+
+---
+
+## W31+W32 additions (Session 16)
+
+### Groups & per-group rooms
+- `src/middleware.ts` — `clerkMiddleware()` required for `auth()` in API routes
+- `src/lib/supabase.ts` — server-side Supabase admin client
+- `src/app/api/groups/route.ts` — GET (user's groups) + POST (create group, random 6-char code)
+- `src/app/api/groups/join/route.ts` — POST join by code (idempotent)
+- `src/app/api/room-history/route.ts` — GET room history summaries
+- `src/app/join/[code]/page.tsx` — auto-join by link, redirect to `/game?groupId=...&groupName=...`
+- `src/app/HomeAuth.tsx` — `GroupSection`: group list, join by code form, create group form
+- `server/src/index.ts` — `filterBy(["groupId"])` for room isolation; archive cron every 15min
+- `server/src/GameRoom.ts` — `groupId`, `playerDbIds`, per-group seed from `groupId` hash, `player_room_states` overlay on join, `broadcastRoomEvent()`, death/loot events, `DAY_DURATION=14_400_000ms`, `worldTime` in `stats_update`
+- `server/src/db.ts` — `loadRoomState`, `saveRoomState`, `insertRoomEvent`, `archiveOldEvents`
+- Supabase tables: `player_room_states(player_id, group_id, x, y, inventory)`, `room_events`, `room_history`
+
+### Game header & UI layout
+- `src/app/game/GameHeader.tsx` — 44px top bar: room name, online count (cyan dot), day/night cycle with progress bar, day counter, HISTORIA link, leave button
+- `src/app/game/EventLog.tsx` — 110px bar below game canvas, listens to `gameRoomEvent` window events, max 40 entries, color-coded by type (death/epic_loot/rare_loot/kill)
+- `src/app/game/page.tsx` — layout: column(header + row(game_column + PlayerPanel)); game_column = column(game-container + EventLog)
+- `src/app/game/PlayerPanel.tsx` — removed ROOM INFO section, reduced padding/sizes, no scroll
+- `src/app/game/scenes/PlayScene.ts` — dispatches `gameRoomInfo`, `gameStats` (with `worldTime`), `gameRoomEvent` window events; `playersOnlineText` hidden
+- `src/app/room-history/page.tsx` — lists archived room event summaries per group
+- Day/night: 4h real-time cycle (`DAY_DURATION=14_400_000ms`), `worldTime` 0–1 sent to client each tick; day count tracked client-side via night→day transitions
+
+### Nickname fix
+- `PhaserGame.tsx` — builds display name from `useUser()`: `firstName lastName` > `username` > email prefix
+- `GameRoom.ts` onJoin — Clerk name takes priority: `player.nickname = options.nickname?.trim() || saved.nickname`
+- `db.ts` savePlayer — `nickname` included in update payload
 
 ---
 

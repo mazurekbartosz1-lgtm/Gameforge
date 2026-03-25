@@ -1,7 +1,7 @@
 import { Room, Client, type RoomOptions } from "@colyseus/core";
 import { Schema, MapSchema, ArraySchema, type } from "@colyseus/schema";
 import { verifyToken } from "@clerk/backend";
-import { loadPlayer, savePlayer, deletePlayer, loadWorldSeed, saveWorldSeed, loadDeadResources, saveDeadResources } from "./db.js";
+import { loadPlayer, savePlayer, deletePlayer, loadWorldSeed, saveWorldSeed, loadDeadResources, saveDeadResources, loadRoomState, saveRoomState, insertRoomEvent } from "./db.js";
 import { FOOD_CONFIG } from "./foodConfig.js";
 import { LOOT_TABLE, rollDrop } from "./lootConfig.js";
 
@@ -99,7 +99,7 @@ export class WorldState extends Schema {
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const TICK_RATE = 1000;          // ms between ticks
-const DAY_DURATION = 600_000;    // 10 min real time = 1 in-game day
+const DAY_DURATION = 14_400_000; // 4h real time = 1 in-game day (2h day + 2h night)
 const HUNGER_DRAIN_PER_SEC  = 0.5 / (TICK_RATE / 1000);
 const SANITY_PASSIVE_REGEN  = 0.3 / (TICK_RATE / 1000); // slow regen when not killing
 const SANITY_KILL_PENALTY   = 20;   // -20 sanity per enemy kill
@@ -210,6 +210,15 @@ export class GameRoom extends Room<GameRoomOptions> {
   /** Items dropped on the ground — persist for room lifetime. */
   private droppedItems = new Map<string, DroppedItemData>();
 
+  /** Group ID this room belongs to (null = shared/temp room). */
+  private groupId: string | null = null;
+
+  /** Players whose death event has already been fired this session. */
+  private deadPlayers = new Set<string>();
+
+  /** Maps sessionId → player UUID in DB (needed for room state save). */
+  private playerDbIds = new Map<string, string>();
+
   /** Fog-of-war tiles discovered per player (sessionId → "tx,ty"[]). */
   private playerFog = new Map<string, string[]>();
 
@@ -220,17 +229,29 @@ export class GameRoom extends Room<GameRoomOptions> {
   /** Accumulated ms since last full game tick (hunger, AI decision, etc.). */
   private gameTickAccum = 0;
 
-  async onCreate(_options: any) {
+  async onCreate(options: any) {
+    this.groupId = options.groupId ?? null;
     const state = new WorldState();
-    // Load persistent seed from Supabase; generate and save if first time
-    const savedSeed = await loadWorldSeed();
-    if (savedSeed !== null) {
-      state.mapSeed = savedSeed;
-      console.log(`[GameRoom] Loaded world seed: ${savedSeed}`);
+
+    if (this.groupId) {
+      // Group room: deterministic seed derived from groupId (unique map per group)
+      let hash = 0;
+      for (let i = 0; i < this.groupId.length; i++) {
+        hash = Math.imul(31, hash) + this.groupId.charCodeAt(i) | 0;
+      }
+      state.mapSeed = Math.abs(hash) % 2_147_483_647 || 1;
+      console.log(`[GameRoom] Group room seed: ${state.mapSeed} (groupId: ${this.groupId})`);
     } else {
-      state.mapSeed = Math.floor(Math.random() * 2_147_483_647);
-      await saveWorldSeed(state.mapSeed);
-      console.log(`[GameRoom] Generated new world seed: ${state.mapSeed}`);
+      // Shared/temp room: load persistent seed from Supabase
+      const savedSeed = await loadWorldSeed();
+      if (savedSeed !== null) {
+        state.mapSeed = savedSeed;
+        console.log(`[GameRoom] Loaded world seed: ${savedSeed}`);
+      } else {
+        state.mapSeed = Math.floor(Math.random() * 2_147_483_647);
+        await saveWorldSeed(state.mapSeed);
+        console.log(`[GameRoom] Generated new world seed: ${state.mapSeed}`);
+      }
     }
     this.setState(state);
     // Load persistent dead trees and rocks
@@ -245,8 +266,7 @@ export class GameRoom extends Room<GameRoomOptions> {
     this.clock.setInterval(async () => {
       const saves: Promise<void>[] = [];
       this.state.players.forEach((player) => {
-        const fog = this.playerFog.get(player.sessionId) ?? [];
-        saves.push(savePlayer(player, fog));
+        saves.push(this._savePlayerState(player));
       });
       await Promise.allSettled(saves);
     }, 30_000);
@@ -291,7 +311,7 @@ export class GameRoom extends Room<GameRoomOptions> {
           // Move fog to new session
           const staleFog = this.playerFog.get(staleSessionId) ?? [];
           // Save stale player before removing — onLeave will find null otherwise
-          await savePlayer(stale, staleFog);
+          await this._savePlayerState(stale);
           this.playerFog.set(client.sessionId, staleFog);
           this.playerFog.delete(staleSessionId);
           this.state.players.delete(staleSessionId);
@@ -301,7 +321,8 @@ export class GameRoom extends Room<GameRoomOptions> {
           // Fresh join — load from Supabase
           const saved = await loadPlayer(payload.sub, player.nickname);
           if (saved) {
-            player.nickname = saved.nickname;
+            // Clerk name takes priority over stored nickname
+            player.nickname = (options.nickname?.trim() || saved.nickname);
             player.x = saved.x;
             player.y = saved.y;
             player.hp = saved.hp;
@@ -322,8 +343,29 @@ export class GameRoom extends Room<GameRoomOptions> {
             player.activeSlot = saved.active_slot;
             // Restore fog
             this.playerFog.set(client.sessionId, Array.isArray(saved.fog) ? saved.fog : []);
+            // Per-room state overlay (position + inventory)
+            if (this.groupId) {
+              this.playerDbIds.set(client.sessionId, saved.id);
+              const roomState = await loadRoomState(saved.id, this.groupId);
+              // Always clear inventory loaded from global players table — room state is authoritative
+              while (player.inventory.length > 0) player.inventory.splice(0, 1);
+              if (roomState) {
+                player.x = roomState.x;
+                player.y = roomState.y;
+                if (Array.isArray(roomState.inventory)) {
+                  roomState.inventory.forEach((item: string) => player.inventory.push(item));
+                }
+                console.log(`[GameRoom] Loaded room state for ${player.nickname} in group ${this.groupId}`);
+              } else {
+                // First time in this room — reset position to spawn
+                player.x = 400 + Math.random() * 200;
+                player.y = 300 + Math.random() * 200;
+                console.log(`[GameRoom] Fresh room state for ${player.nickname} in group ${this.groupId}`);
+              }
+            }
           } else {
             this.playerFog.set(client.sessionId, []);
+            if (this.groupId) this.playerDbIds.set(client.sessionId, "");
           }
           console.log(`[GameRoom] ${player.nickname} joined (clerkId: ${payload.sub})`);
         }
@@ -353,7 +395,7 @@ export class GameRoom extends Room<GameRoomOptions> {
         stale.equipment.forEach((itemId, slot) => player.equipment.set(slot, itemId));
         const staleFog = this.playerFog.get(staleSessionId) ?? [];
         // Save stale player before removing — onLeave will find null otherwise
-        await savePlayer(stale, staleFog);
+        await this._savePlayerState(stale);
         this.playerFog.set(client.sessionId, staleFog);
         this.playerFog.delete(staleSessionId);
         this.state.players.delete(staleSessionId);
@@ -414,14 +456,34 @@ export class GameRoom extends Room<GameRoomOptions> {
   async onLeave(client: Client, _code?: number) {
     const player = this.state.players.get(client.sessionId);
     if (player) {
-      const fog = this.playerFog.get(client.sessionId) ?? [];
-      await savePlayer(player, fog);
+      await this._savePlayerState(player);
       this.playerFog.delete(client.sessionId);
+      this.playerDbIds.delete(client.sessionId);
       this.state.players.delete(client.sessionId);
     }
     this.broadcast("player_remove", { sessionId: client.sessionId });
     console.log(`[GameRoom] ${client.sessionId} left`);
     this._updateMetadata();
+  }
+
+  /** Broadcast a room event to all clients and persist to DB. */
+  private broadcastRoomEvent(type: string, playerName: string, message: string) {
+    const event = { id: crypto.randomUUID(), type, playerName, message, timestamp: Date.now() };
+    this.broadcast("room_event", event);
+    insertRoomEvent(this.roomId, this.groupId, type, playerName, message).catch(() => {});
+  }
+
+  /** Save player — routes to room state table when in a group room. */
+  async _savePlayerState(player: PlayerState): Promise<void> {
+    const fog = this.playerFog.get(player.sessionId) ?? [];
+    if (this.groupId) {
+      const dbId = this.playerDbIds.get(player.sessionId);
+      if (dbId) {
+        await saveRoomState(dbId, this.groupId, player);
+        return;
+      }
+    }
+    await savePlayer(player, fog);
   }
 
   _updateMetadata() {
@@ -430,7 +492,7 @@ export class GameRoom extends Room<GameRoomOptions> {
     this.state.players.forEach((p) => {
       p.userId === p.sessionId ? guests++ : authenticated++;
     });
-    this.setMetadata({ authenticated, guests });
+    this.setMetadata({ authenticated, guests, groupId: this.groupId });
   }
 
   onDispose() {
@@ -474,7 +536,12 @@ export class GameRoom extends Room<GameRoomOptions> {
 
       // Hunger hurts HP
       if (player.hunger <= 0) {
+        const prevHp = player.hp;
         player.hp = Math.max(0, player.hp - 1);
+        if (prevHp > 0 && player.hp === 0 && !this.deadPlayers.has(player.sessionId)) {
+          this.deadPlayers.add(player.sessionId);
+          this.broadcastRoomEvent("death", player.nickname, `☠ ${player.nickname} umarł(a) z głodu`);
+        }
       }
     });
   }
@@ -508,6 +575,7 @@ export class GameRoom extends Room<GameRoomOptions> {
         defense: player.defense,
         nickname: player.nickname,
         isNight: this.state.isNight,
+        worldTime: this.state.worldTime,
         equipment,
       });
     });
@@ -651,9 +719,14 @@ export class GameRoom extends Room<GameRoomOptions> {
           enemy.animKey = `pierce_${dir}`;
           const attackedPlayer = this.state.players.get(nearest.sessionId);
           if (attackedPlayer) {
+            const prevHp = attackedPlayer.hp;
             attackedPlayer.hp = Math.max(0, attackedPlayer.hp - ENEMY_ATTACK_DAMAGE);
             const attackedClient = this.clients.find(c => c.sessionId === nearest!.sessionId);
             attackedClient?.send("player_damage", { damage: ENEMY_ATTACK_DAMAGE, hp: attackedPlayer.hp });
+            if (prevHp > 0 && attackedPlayer.hp === 0 && !this.deadPlayers.has(attackedPlayer.sessionId)) {
+              this.deadPlayers.add(attackedPlayer.sessionId);
+              this.broadcastRoomEvent("death", attackedPlayer.nickname, `☠ ${attackedPlayer.nickname} zginął(a) od ataku wroga`);
+            }
           }
         } else {
           // ── Ready stance — face player ───────────────────────────────────────
@@ -888,7 +961,7 @@ export class GameRoom extends Room<GameRoomOptions> {
       this.sendStatsToPlayers();
       client.send("inventory_load", Array.from(player.inventory));
       const fog = this.playerFog.get(client.sessionId) ?? [];
-      savePlayer(player, fog).catch((e) => console.warn("[DB] equip save error:", e));
+      this._savePlayerState(player).catch((e) => console.warn("[DB] equip save error:", e));
       console.log(`[GameRoom] ${player.nickname} equipped ${data.itemId} in slot ${lootItem.slot}`);
     });
 
@@ -903,7 +976,7 @@ export class GameRoom extends Room<GameRoomOptions> {
       this.sendStatsToPlayers();
       client.send("inventory_load", Array.from(player.inventory));
       const fog = this.playerFog.get(client.sessionId) ?? [];
-      savePlayer(player, fog).catch((e) => console.warn("[DB] unequip save error:", e));
+      this._savePlayerState(player).catch((e) => console.warn("[DB] unequip save error:", e));
       console.log(`[GameRoom] ${player.nickname} unequipped ${itemId} from slot ${data.slot}`);
     });
 
@@ -914,7 +987,7 @@ export class GameRoom extends Room<GameRoomOptions> {
       if (idx === -1) return;
       player.inventory.splice(idx, 1);
       const fog = this.playerFog.get(client.sessionId) ?? [];
-      savePlayer(player, fog).catch((e) => console.warn("[DB] destroy save error:", e));
+      this._savePlayerState(player).catch((e) => console.warn("[DB] destroy save error:", e));
       console.log(`[GameRoom] ${player.nickname} destroyed ${data.itemId}`);
     });
 
@@ -1021,7 +1094,7 @@ export class GameRoom extends Room<GameRoomOptions> {
       // Persist inventory immediately after every harvest
       if (player) {
         const fog = this.playerFog.get(client.sessionId) ?? [];
-        savePlayer(player, fog).catch((e) => console.warn("[DB] harvest save error:", e));
+        this._savePlayerState(player).catch((e) => console.warn("[DB] harvest save error:", e));
       }
       // Persist dead trees/rocks world state
       if (data.id.startsWith("tree_") || data.id.startsWith("rock_")) {
@@ -1047,7 +1120,7 @@ export class GameRoom extends Room<GameRoomOptions> {
       console.log(`[GameRoom] ${player.nickname} ate ${data.itemId} (hunger: ${player.hunger.toFixed(0)}, hp: ${player.hp})`);
       // Persist inventory immediately after eat
       const fog = this.playerFog.get(client.sessionId) ?? [];
-      savePlayer(player, fog).catch((e) => console.warn("[DB] eat save error:", e));
+      this._savePlayerState(player).catch((e) => console.warn("[DB] eat save error:", e));
     });
 
     this.onMessage("drop_item", (client, data: { itemId: string }) => {
@@ -1062,7 +1135,7 @@ export class GameRoom extends Room<GameRoomOptions> {
       this.broadcast("item_dropped", drop);
       client.send("inventory_load", Array.from(player.inventory));
       const fog = this.playerFog.get(client.sessionId) ?? [];
-      savePlayer(player, fog).catch((e) => console.warn("[DB] drop save error:", e));
+      this._savePlayerState(player).catch((e) => console.warn("[DB] drop save error:", e));
       console.log(`[GameRoom] ${player.nickname} dropped ${data.itemId} at (${Math.round(player.x)}, ${Math.round(player.y)})`);
     });
 
@@ -1078,7 +1151,7 @@ export class GameRoom extends Room<GameRoomOptions> {
       this.broadcast("item_removed", { id: data.id });
       client.send("inventory_load", Array.from(player.inventory));
       const fog = this.playerFog.get(client.sessionId) ?? [];
-      savePlayer(player, fog).catch((e) => console.warn("[DB] pickup save error:", e));
+      this._savePlayerState(player).catch((e) => console.warn("[DB] pickup save error:", e));
       console.log(`[GameRoom] ${player.nickname} picked up ${drop.itemId} (x${drop.qty})`);
     });
 
@@ -1102,6 +1175,12 @@ export class GameRoom extends Room<GameRoomOptions> {
         if (dropId) {
           const lootItem = LOOT_TABLE[dropId];
           player.inventory.push(dropId);
+          client.send("inventory_load", Array.from(player.inventory));
+          if (lootItem.rarity === "rare") {
+            this.broadcastRoomEvent("epic_loot", player.nickname, `💎 ${player.nickname} znalazł(a) ${lootItem.name} [RARE]`);
+          } else if (lootItem.rarity === "uncommon") {
+            this.broadcastRoomEvent("rare_loot", player.nickname, `⚔ ${player.nickname} zdobył(a) ${lootItem.name} [UNCOMMON]`);
+          }
           this.broadcast("enemy_loot", {
             itemId: dropId,
             itemName: lootItem.name,
@@ -1114,7 +1193,7 @@ export class GameRoom extends Room<GameRoomOptions> {
         player.sanity = Math.max(0, player.sanity - SANITY_KILL_PENALTY);
         this.sendStatsToPlayers();
         const fog = this.playerFog.get(client.sessionId) ?? [];
-        savePlayer(player, fog).catch((e) => console.warn("[DB] kill save error:", e));
+        this._savePlayerState(player).catch((e) => console.warn("[DB] kill save error:", e));
         console.log(`[GameRoom] ${player.nickname} killed ${enemy.id} → drop: ${dropId ?? "none"} (sanity: ${player.sanity.toFixed(0)})`);
       }
     });
