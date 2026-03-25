@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-25 (Session 20 — W38+W39: RuleEngine, declarative rules, all triggers)
+2026-03-25 (Session 21 — W41: ModInput voice/text component, /forge page)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -38,6 +38,7 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ Wieczór 36 (Session 19): MonsterConfig system — `server/src/monsterConfig.ts` + `src/app/game/monsterConfig.ts`; `configId` w `EnemyState`; tint + scale per variant; 3 warianty: hunter/fire_hunter/boss_hunter; damage z config; `enemy_update` broadcast rozszerzony o configId/hp/maxHp
 - ✅ Wieczór 37 (Session 19): Elemental weapons + particle effects + status effects — `src/app/game/effects/particles.ts` (6 presetów, `playEffect`/`burstEffect`/`createParticleTexture`); `ELEMENT_MODIFIERS` + `getItemDef()` w `itemConfig.ts`; elemental suffix w `lootConfig.ts` (rollDrop + getLootItem); `statusEffects: MapSchema<float64>` w `EnemyState`; DoT (fire/poison), slow (ice), stun (electric), lifesteal (shadow), bonus dmg (holy); ikony efektów nad HP barem; burst na atak z elemental bronią; `PlayerPanel` używa `getItemDef`; inventory grid 5×6=30 slotów; fix stackowania elemental itemów
 - ✅ Wieczór 38+39 (Session 20): RuleEngine — `server/src/RuleEngine.ts` (klasa z evaluate/loadRules/applyModRules); `server/src/defaultRules.ts` (4 reguły demo); triggery: on_tick, every_Ns (timer), on_eat, on_hunger_low (throttle 1/min), on_enemy_death; efekty: modify_stat (player/all_players), add_item (pool[] dla losowego itemu per gracz), spawn_enemy (qty+pozycja blisko gracza), broadcast_message, set_weather; `WorldState.weather` dodany do schematu; `rule_message` handler w PlayScene → EventLog; PLAN.md rozszerzony o W60 (MonsterConfig v2 + data-driven AI)
+- ✅ Wieczór 41 (Session 21): ModInput component + /forge page — `src/app/components/ModInput.tsx` (textarea 500ch, Web Speech API voice input pl-PL/en-US, language selector PL/EN, submit button); `src/app/forge/page.tsx` (auth guard, debug submit preview); W40 (visual variants) odłożony — sprite'y zostaną wygenerowane przez Pixellab
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`
