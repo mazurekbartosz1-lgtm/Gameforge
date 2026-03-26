@@ -1308,7 +1308,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 44: Fork system — personal branch test
+### [x] Wieczór 44: Fork system — personal branch test (ZAIMPLEMENTOWANE, zmiany vs plan: maxClients=3 zamiast 1 — zapraszanie max 2 graczy do testu; system notyfikacji test_invite; NotificationBell; pokój tworzony przez HTTP matchmake, nie przez WS client.create)
 
 ```
 Implement the ability for a player to test a mod locally before submitting to group vote.
@@ -1343,7 +1343,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 45: Submit modification to group vote
+### [x] Wieczór 45: Submit modification to group vote (ZAIMPLEMENTOWANE, zmiany vs plan: submit przez REST API /api/forge/submit zamiast Colyseus message; player picker z zaproszeniami; ForgeNav + /forge/glosowanie — lista wszystkich submitted modów)
 
 ```
 Implement the mod submission flow and real-time Colyseus broadcast.
@@ -1423,7 +1423,7 @@ Confirm when done and show me what was created.
 
 ---
 
-### [ ] Wieczór 47: Apply winning ModConfig to live room without restart
+### [x] Wieczór 47: Apply winning ModConfig to live room without restart (ZAIMPLEMENTOWANE, inne podejście niż plan: zamiast HTTP endpoint + INTERNAL_API_KEY → polling co 60s w GameRoom.onCreate; loadApprovedMods(groupId) z DB; GameRoom.applyMod() + RuleEngine.addRules(); broadcast mod_activated; brak potrzeby external trigger — pokój sam wykrywa nowe approved mody)
 
 ```
 Apply a winning ModConfig to the live Colyseus room without disconnecting players.
