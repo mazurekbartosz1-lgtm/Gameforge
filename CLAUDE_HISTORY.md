@@ -1247,6 +1247,36 @@ Pamiętaj: `ANTHROPIC_API_KEY` dodać na Vercel przed deplojem.
 
 ---
 
+## Session 42 — 2026-03-26 (Session 23, kontynuacja)
+
+### What was done
+- `server/src/db.ts` — `loadApprovedMods(groupId)`: query `mod_configs WHERE group_id=X AND status='approved'`, zwraca `ApprovedMod[]`
+- `server/src/RuleEngine.ts` — `addRules(rules)`: dokłada reguły do istniejącej tablicy bez resetowania (w odróżnieniu od `loadRules` który czyści)
+- `server/src/GameRoom.ts`:
+  - nowe pole `private loadedModIds = new Set<string>()`
+  - `protected applyMod(modId, config)`: sprawdza `loadedModIds`, rejestruje warianty w `MONSTER_CONFIG` (prefix `mod_`), wywołuje `ruleEngine.addRules()`, broadcastuje `mod_activated` do klientów
+  - `onCreate`: po `loadRules(DEFAULT_RULES)` → ładuje wszystkie approved mody; następnie `clock.setInterval` co 60s → polling nowych approved modów → `applyMod` dla nieznanych
+
+### Decisions made
+- Mody kumulują się — każdy zatwierdzony mod dokłada się do puli, nie zastępuje poprzednich (`Set<loadedModIds>` zapobiega duplikatom)
+- Polling co 60s — max opóźnienie od zatwierdzenia do aktywacji w żywym pokoju; akceptowalne
+- `addRules` zamiast `loadRules` — preservuje DEFAULT_RULES; mody rozszerzają mechanikę a nie zastępują
+- `applyMod` jest `protected` — TestRoom może go ewentualnie nadpisać w przyszłości
+- Broadcast `mod_activated` — klient może wyświetlić powiadomienie gdy nowy mod wchodzi w życie
+
+### Problems encountered
+- `loadRules` resetuje reguły — gdyby użyć go w `applyMod`, DEFAULT_RULES byłyby kasowane przy pierwszym modzie; rozwiązano przez `addRules`
+
+### Next step
+**Wieczór 46** — Pełny system głosowania:
+- Supabase tabela `votes(id, mod_id, player_id, created_at)` UNIQUE(mod_id, player_id)
+- `POST /api/forge/vote`: Clerk auth, max 3 głosy/tydzień na gracza, upsert vote, sprawdź próg (np. 3 głosy) → status `approved`
+- `forge/vote/[modId]`: aktywny przycisk ❤ Zagłosuj, licznik głosów
+- Notyfikacja `mod_voted` dla autora moda gdy ktoś zagłosuje
+- Gdy mod → `approved`: GameRoom wykryje w ciągu 60s przez polling i zaaplikuje
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,
