@@ -7,7 +7,7 @@ const pixelFont = Press_Start_2P({ weight: "400", subsets: ["latin"] });
 
 // ─── Plan progress ────────────────────────────────────────────────────────────
 const TOTAL_TASKS = 60;
-const DONE_TASKS = 41;
+const DONE_TASKS = 42;
 const PROGRESS_PCT = Math.round((DONE_TASKS / TOTAL_TASKS) * 100);
 const NEXT_LABEL = "T46 — Voting system";
 
@@ -60,6 +60,24 @@ interface LogEntry {
 }
 
 const DEV_LOG: LogEntry[] = [
+  {
+    date: "2026-03-26",
+    tag: "devlog · UI polish",
+    title: "Pixel font everywhere — the HUD finally looks like a game",
+    items: [
+      "Press Start 2P pixel font is now applied consistently across every page: home, forge, voting, room history, status, and the game HUD.",
+      "Game header labels (room name, day/night cycle, buttons) all switched to pixel font — the game now has a coherent retro identity.",
+      "Player panel stats, combat values, equipment slots, and section headers all use pixel font at small sizes (6–9px).",
+      "Devlog launched publicly — anyone can read the project diary without an account. All other pages stay behind login.",
+      "Waitlist form added to devlog — players can leave their email to be notified when the game opens.",
+    ],
+    challenges: [
+      {
+        what: "Press Start 2P renders much wider than regular sans-serif fonts — the same pixel size as body text caused overflow and layout breaks.",
+        how: "We reduced font sizes significantly across the board (e.g. h1 titles from 22px → 13px, stat values from 16px → 13px). The font looks best at 6–14px.",
+      },
+    ],
+  },
   {
     date: "2026-03-26",
     tag: "T44 · T45 · T47",

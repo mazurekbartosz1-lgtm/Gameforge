@@ -7,6 +7,7 @@ import NotificationBell from "../components/NotificationBell";
 const S = {
   display: "var(--font-display), 'Space Grotesk', sans-serif",
   body: "var(--font-body), 'Plus Jakarta Sans', sans-serif",
+  pixel: "var(--font-pixel), 'Press Start 2P', monospace",
 };
 
 type RoomInfo = { playerCount: number; roomId: string };
@@ -94,7 +95,7 @@ export default function GameHeader() {
       {/* LEFT — room info */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
         <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2, minWidth: 0 }}>
-          <span style={{ fontFamily: S.body, color: "#46465b", fontSize: 7, textTransform: "uppercase", letterSpacing: "0.2em" }}>
+          <span style={{ fontFamily: S.pixel, color: "#46465b", fontSize: 6, textTransform: "uppercase", letterSpacing: "0.1em" }}>
             POKÓJ
           </span>
           <span style={{
@@ -113,7 +114,7 @@ export default function GameHeader() {
             padding: "3px 8px",
           }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#00e3fd", flexShrink: 0, boxShadow: "0 0 4px #00e3fd" }} />
-            <span style={{ fontFamily: S.display, color: "#00e3fd", fontSize: 12, fontWeight: 900 }}>
+            <span style={{ fontFamily: S.pixel, color: "#00e3fd", fontSize: 9 }}>
               {roomInfo.playerCount}
             </span>
             <span style={{ fontFamily: S.body, color: "#46465b", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.1em" }}>
@@ -128,9 +129,9 @@ export default function GameHeader() {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 14, lineHeight: 1 }}>{isNight ? "🌙" : "☀"}</span>
           <span style={{
-            fontFamily: S.display, fontWeight: 900, fontSize: 11,
+            fontFamily: S.pixel, fontSize: 9,
             color: isNight ? "#a78bfa" : "#FF8C00",
-            letterSpacing: "0.12em", textTransform: "uppercase",
+            letterSpacing: "0.06em", textTransform: "uppercase",
           }}>
             {isNight ? "NOC" : "DZIEŃ"} {day}
           </span>
@@ -162,7 +163,7 @@ export default function GameHeader() {
           return gId ? `/forge/moje-mody?groupId=${gId}` : "/forge/moje-mody";
         })()}
         style={{
-          fontFamily: S.display, fontWeight: 700, fontSize: 10, letterSpacing: "0.08em",
+          fontFamily: S.pixel, fontSize: 8, letterSpacing: "0.05em",
           textTransform: "uppercase", color: "#FF8C00", textDecoration: "none",
           border: "1px solid rgba(255,140,0,0.3)", padding: "5px 10px", whiteSpace: "nowrap",
           opacity: 0.8,
@@ -178,7 +179,7 @@ export default function GameHeader() {
           return `/room-history?groupId=${gId}${gName ? `&groupName=${gName}` : ""}`;
         })()}
         style={{
-          fontFamily: S.display, fontWeight: 700, fontSize: 10, letterSpacing: "0.08em",
+          fontFamily: S.pixel, fontSize: 8, letterSpacing: "0.05em",
           textTransform: "uppercase", color: "rgba(169,169,194,0.5)", textDecoration: "none",
           border: "1px solid rgba(169,169,194,0.15)", padding: "5px 10px", whiteSpace: "nowrap",
         }}
@@ -188,10 +189,9 @@ export default function GameHeader() {
       <a
         href="/"
         style={{
-          fontFamily: S.display,
-          fontWeight: 900,
-          fontSize: 10,
-          letterSpacing: "0.1em",
+          fontFamily: S.pixel,
+          fontSize: 8,
+          letterSpacing: "0.06em",
           textTransform: "uppercase",
           color: "rgba(169,169,194,0.6)",
           textDecoration: "none",

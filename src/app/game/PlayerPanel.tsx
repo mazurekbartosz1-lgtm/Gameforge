@@ -24,17 +24,17 @@ type Position = { x: number; y: number };
 const S = {
   display: "var(--font-display), 'Space Grotesk', sans-serif",
   body: "var(--font-body), 'Plus Jakarta Sans', sans-serif",
+  pixel: "var(--font-pixel), 'Press Start 2P', monospace",
 };
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <span style={{
-      fontFamily: "var(--font-body), 'Plus Jakarta Sans', sans-serif",
+      fontFamily: "var(--font-pixel), 'Press Start 2P', monospace",
       color: "#a9a9c2",
-      fontSize: 8,
+      fontSize: 7,
       textTransform: "uppercase",
-      letterSpacing: "0.18em",
-      fontWeight: 700,
+      letterSpacing: "0.1em",
     }}>
       {children}
     </span>
@@ -46,10 +46,10 @@ function StatBar({ value, max, color, label }: { value: number; max: number; col
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontFamily: S.body, color: "#a9a9c2", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 700 }}>
+        <span style={{ fontFamily: S.pixel, color: "#a9a9c2", fontSize: 7, textTransform: "uppercase", letterSpacing: "0.08em" }}>
           {label}
         </span>
-        <span style={{ fontFamily: S.display, color: "#a9a9c2", fontSize: 9, fontWeight: 600 }}>
+        <span style={{ fontFamily: S.pixel, color: "#a9a9c2", fontSize: 7 }}>
           {Math.floor(value)}<span style={{ color: "#46465b" }}>/{max}</span>
         </span>
       </div>
@@ -79,8 +79,8 @@ function CombatTile({
       alignItems: "center",
       gap: 2,
     }}>
-      <span style={{ fontFamily: S.body, color: "#46465b", fontSize: 8, textTransform: "uppercase", letterSpacing: "0.1em" }}>{label}</span>
-      <span style={{ fontFamily: S.display, fontSize: 16, fontWeight: 900, color: accentColor, lineHeight: 1 }}>{value}</span>
+      <span style={{ fontFamily: S.pixel, color: "#46465b", fontSize: 7, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</span>
+      <span style={{ fontFamily: S.pixel, fontSize: 13, color: accentColor, lineHeight: 1 }}>{value}</span>
       {warning}
     </div>
   );
@@ -184,16 +184,16 @@ export default function PlayerPanel() {
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{
-            fontFamily: S.display,
+            fontFamily: S.pixel,
             color: "#e4e3fe",
-            fontWeight: 700,
-            fontSize: 13,
+            fontSize: 9,
             textTransform: "uppercase",
             letterSpacing: "0.04em",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-            maxWidth: 110,
+            maxWidth: 130,
+            lineHeight: 1.6,
           }}>
             {displayName}
           </span>
@@ -204,9 +204,8 @@ export default function PlayerPanel() {
             style={{
               marginTop: 8,
               width: "100%",
-              fontFamily: S.display,
-              fontSize: 9,
-              fontWeight: 700,
+              fontFamily: S.pixel,
+              fontSize: 8,
               color: "#2a1600",
               background: "linear-gradient(to right, #FF8C00, #CC7000)",
               border: "none",
@@ -233,8 +232,8 @@ export default function PlayerPanel() {
           />
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
-          <span style={{ fontFamily: S.display, color: "#46465b", fontSize: 7 }}>X {pos.x}</span>
-          <span style={{ fontFamily: S.display, color: "#46465b", fontSize: 7 }}>Y {pos.y}</span>
+          <span style={{ fontFamily: S.pixel, color: "#46465b", fontSize: 6 }}>X {pos.x}</span>
+          <span style={{ fontFamily: S.pixel, color: "#46465b", fontSize: 6 }}>Y {pos.y}</span>
         </div>
       </div>
 
