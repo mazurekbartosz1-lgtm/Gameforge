@@ -98,7 +98,7 @@ export default function GameHeader() {
             POKÓJ
           </span>
           <span style={{
-            fontFamily: S.display, color: "#e4e3fe", fontSize: 12, fontWeight: 700,
+            fontFamily: "var(--font-pixel), 'Press Start 2P', monospace", color: "#e4e3fe", fontSize: 9,
             textTransform: "uppercase", letterSpacing: "0.05em",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180,
           }}>

@@ -163,7 +163,7 @@ export default function ForgePage() {
         <a href="/" style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,140,0,0.5)", textDecoration: "none", fontWeight: 700 }}>
           ← Gameforge
         </a>
-        <h1 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.01em", color: "#FF8C00", textTransform: "uppercase", marginTop: 16, marginBottom: 4 }}>
+        <h1 style={{ fontFamily: "var(--font-pixel), 'Press Start 2P', monospace", fontSize: 13, color: "#FF8C00", textTransform: "uppercase", marginTop: 16, marginBottom: 8, lineHeight: 1.7, letterSpacing: "0.03em" }}>
           Create a Modification
         </h1>
         <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", letterSpacing: "0.05em", margin: 0 }}>
@@ -250,7 +250,7 @@ export default function ForgePage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             {/* Name + description */}
             <div>
-              <h2 style={{ fontSize: 18, fontWeight: 900, color: "#FF8C00", margin: "0 0 6px", textTransform: "uppercase" }}>
+              <h2 style={{ fontFamily: "var(--font-pixel), 'Press Start 2P', monospace", fontSize: 11, color: "#FF8C00", margin: "0 0 10px", textTransform: "uppercase", lineHeight: 1.7 }}>
                 {modConfig.name}
               </h2>
               <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", margin: 0, lineHeight: 1.5 }}>

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Space_Grotesk, Plus_Jakarta_Sans } from "next/font/google";
+import { Space_Grotesk, Plus_Jakarta_Sans, Press_Start_2P } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
@@ -17,6 +17,13 @@ const plusJakarta = Plus_Jakarta_Sans({
   display: "swap",
 });
 
+const pressStart = Press_Start_2P({
+  variable: "--font-pixel",
+  subsets: ["latin"],
+  weight: "400",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "GameForge — Your Game. Your Rules.",
   description: "Multiplayer survival game shaped by your group.",
@@ -31,7 +38,7 @@ export default function RootLayout({
     <ClerkProvider>
       <html
         lang="pl"
-        className={`${spaceGrotesk.variable} ${plusJakarta.variable}`}
+        className={`${spaceGrotesk.variable} ${plusJakarta.variable} ${pressStart.variable}`}
         style={{ height: "100%" }}
       >
         <body style={{ minHeight: "100%", margin: 0, padding: 0, background: "#0b0c1f" }}>

@@ -47,7 +47,7 @@ export default function VotePage() {
         <a href="/forge/glosowanie" style={linkStyle}>← Głosowanie</a>
         <ForgeNav active="glosowanie" />
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 900, color: "#FF8C00", textTransform: "uppercase", margin: 0, flex: 1 }}>
+          <h1 style={{ fontFamily: "var(--font-pixel), 'Press Start 2P', monospace", fontSize: 13, color: "#FF8C00", textTransform: "uppercase", margin: 0, flex: 1, lineHeight: 1.7 }}>
             {mod.config.name}
           </h1>
           <StatusBadge status={mod.status} />

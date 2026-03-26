@@ -65,17 +65,16 @@ export default function Home() {
         flexShrink: 0,
       }}>
         <h1 style={{
-          fontFamily: "var(--font-display), 'Space Grotesk', sans-serif",
-          fontSize: "clamp(22px, 3vw, 36px)",
-          fontWeight: 900,
-          letterSpacing: "-0.01em",
+          fontFamily: "var(--font-pixel), 'Press Start 2P', monospace",
+          fontSize: "clamp(14px, 2vw, 22px)",
           color: "#FF8C00",
-          textShadow: "0 0 10px rgba(255, 140, 0, 0.6)",
+          textShadow: "0 0 20px rgba(255, 140, 0, 0.5), 4px 4px 0 rgba(255,140,0,0.15)",
           textTransform: "uppercase",
           margin: 0,
-          lineHeight: 1.1,
+          lineHeight: 1.6,
+          letterSpacing: "0.03em",
         }}>
-          Gameforge. Your game, your rules
+          Gameforge
         </h1>
         <p style={{
           fontFamily: "var(--font-display), 'Space Grotesk', sans-serif",

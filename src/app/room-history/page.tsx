@@ -48,8 +48,8 @@ function RoomHistoryContent() {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 32 }}>
         <div>
-          <h1 style={{ fontFamily: S.display, color: "#FF8C00", fontSize: 20, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", margin: 0 }}>
-            Historia Pokoju
+          <h1 style={{ fontFamily: "var(--font-pixel), 'Press Start 2P', monospace", color: "#FF8C00", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.03em", margin: 0, lineHeight: 1.7 }}>
+            Room History
           </h1>
           <p style={{ fontFamily: S.body, color: "#46465b", fontSize: 11, margin: "4px 0 0", textTransform: "uppercase", letterSpacing: "0.15em" }}>
             Podsumowania sesji gry

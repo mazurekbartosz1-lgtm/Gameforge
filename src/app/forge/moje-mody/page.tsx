@@ -167,8 +167,8 @@ export default function MojeModPage() {
           <a href="/forge" style={linkStyle}>+ Nowa modyfikacja</a>
           <div style={{ marginLeft: "auto" }}><NotificationBell /></div>
         </div>
-        <h1 style={{ fontSize: 22, fontWeight: 900, color: "#FF8C00", textTransform: "uppercase", margin: "0 0 4px" }}>
-          Moje Modyfikacje
+        <h1 style={{ fontFamily: "var(--font-pixel), 'Press Start 2P', monospace", fontSize: 13, color: "#FF8C00", textTransform: "uppercase", margin: "0 0 8px", lineHeight: 1.7, letterSpacing: "0.03em" }}>
+          My Modifications
         </h1>
         <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", margin: 0 }}>
           Przeglądaj swoje mody i wysyłaj je do głosowania grupie.

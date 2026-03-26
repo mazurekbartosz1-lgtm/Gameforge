@@ -167,14 +167,13 @@ export default function StatusPage() {
           </p>
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
             <h1 style={{
-              fontFamily: S.display,
-              fontSize: 26,
-              fontWeight: 900,
+              fontFamily: "var(--font-pixel), 'Press Start 2P', monospace",
+              fontSize: 14,
               color: "#e4e3fe",
               textTransform: "uppercase",
-              letterSpacing: "-0.01em",
+              letterSpacing: "0.03em",
               margin: 0,
-              lineHeight: 1,
+              lineHeight: 1.7,
             }}>
               SYSTEM STATUS
             </h1>

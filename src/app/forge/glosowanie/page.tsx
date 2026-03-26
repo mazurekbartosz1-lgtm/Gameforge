@@ -31,8 +31,8 @@ export default function GlosowaniePage() {
     <div style={{ minHeight: "100vh", background: "#0b0c1f", display: "flex", flexDirection: "column", alignItems: "center", padding: "48px 24px" }}>
       <div style={{ width: "100%", maxWidth: 600, marginBottom: 32 }}>
         <a href="/" style={backLinkStyle}>← Gameforge</a>
-        <h1 style={{ fontSize: 22, fontWeight: 900, color: "#FF8C00", textTransform: "uppercase", marginTop: 16, marginBottom: 4 }}>
-          Głosowanie
+        <h1 style={{ fontFamily: "var(--font-pixel), 'Press Start 2P', monospace", fontSize: 13, color: "#FF8C00", textTransform: "uppercase", marginTop: 16, marginBottom: 8, lineHeight: 1.7, letterSpacing: "0.03em" }}>
+          Voting
         </h1>
         <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", letterSpacing: "0.05em", margin: 0 }}>
           Mody zgłoszone przez graczy do głosowania{groupId ? " w twojej grupie" : ""}.
