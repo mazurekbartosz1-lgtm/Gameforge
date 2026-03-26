@@ -1,7 +1,7 @@
 import { Room, Client, type RoomOptions } from "@colyseus/core";
 import { Schema, MapSchema, ArraySchema, type } from "@colyseus/schema";
 import { verifyToken } from "@clerk/backend";
-import { loadPlayer, savePlayer, deletePlayer, loadWorldSeed, saveWorldSeed, loadDeadResources, saveDeadResources, loadRoomState, saveRoomState, insertRoomEvent } from "./db.js";
+import { loadPlayer, savePlayer, deletePlayer, loadWorldSeed, saveWorldSeed, loadDeadResources, saveDeadResources, loadRoomState, saveRoomState, insertRoomEvent, submitModToGroup } from "./db.js";
 import { FOOD_CONFIG } from "./foodConfig.js";
 import { LOOT_TABLE, rollDrop, getLootItem } from "./lootConfig.js";
 import { MONSTER_CONFIG } from "./monsterConfig.js";
@@ -1498,6 +1498,20 @@ export class GameRoom extends Room<GameRoomOptions> {
         this._savePlayerState(player).catch((e) => console.warn("[DB] kill save error:", e));
         console.log(`[GameRoom] ${player.nickname} killed ${enemy.id} → drop: ${dropId ?? "none"} (sanity: ${player.sanity.toFixed(0)})`);
       }
+    });
+
+    this.onMessage("submit_mod", async (client, data: { modId: string }) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player || !this.groupId) return;
+      const result = await submitModToGroup(data.modId, this.groupId);
+      if (!result) return;
+      this.broadcast("mod_submitted", {
+        modId: data.modId,
+        name: result.name,
+        description: result.description,
+        createdBy: player.nickname,
+      });
+      console.log(`[GameRoom] ${player.nickname} submitted mod "${result.name}" to group ${this.groupId}`);
     });
   }
 }

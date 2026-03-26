@@ -225,6 +225,27 @@ export async function saveRoomState(playerId: string, groupId: string, player: P
 
 // ─── Player persistence ───────────────────────────────────────────────────────
 
+/** Update mod status to 'submitted' and set group_id. Returns { name, description } or null. */
+export async function submitModToGroup(
+  modId: string,
+  groupId: string
+): Promise<{ name: string; description: string } | null> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("mod_configs")
+      .update({ group_id: groupId, status: "submitted" })
+      .eq("id", modId)
+      .select("config")
+      .single();
+    if (error || !data) return null;
+    const cfg = data.config as { name: string; description: string };
+    return { name: cfg.name ?? "Mod", description: cfg.description ?? "" };
+  } catch (err) {
+    console.warn("[DB] submitModToGroup exception:", err);
+    return null;
+  }
+}
+
 export async function deletePlayer(userId: string): Promise<void> {
   try {
     const { error } = await supabaseAdmin

@@ -157,7 +157,10 @@ export default function GameHeader() {
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
       <NotificationBell />
       <a
-        href="/forge/moje-mody"
+        href={(() => {
+          const gId = searchParams.get("groupId");
+          return gId ? `/forge/moje-mody?groupId=${gId}` : "/forge/moje-mody";
+        })()}
         style={{
           fontFamily: S.display, fontWeight: 700, fontSize: 10, letterSpacing: "0.08em",
           textTransform: "uppercase", color: "#FF8C00", textDecoration: "none",

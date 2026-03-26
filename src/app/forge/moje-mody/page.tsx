@@ -9,7 +9,7 @@ import NotificationBell from "../../components/NotificationBell";
 interface SavedMod {
   id: string;
   config: ModConfig;
-  status: "pending" | "approved" | "rejected" | "deleted";
+  status: "pending" | "submitted" | "approved" | "rejected" | "deleted";
   votes: number;
   created_at: string;
 }
@@ -23,12 +23,22 @@ const STATUS_LABEL: Record<string, { text: string; color: string }> = {
 export default function MojeModPage() {
   const { isLoaded, isSignedIn } = useUser();
   const router = useRouter();
+  const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const groupId = searchParams?.get("groupId") ?? null;
+
   const [mods, setMods] = useState<SavedMod[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [testRoomIds, setTestRoomIds] = useState<Record<string, string>>({});
   const [creatingTestRoomFor, setCreatingTestRoomFor] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [submittedIds, setSubmittedIds] = useState<Set<string>>(new Set());
+  // Player picker
+  const [groupPlayers, setGroupPlayers] = useState<{ id: string; nickname: string; clerkId: string }[]>([]);
+  const [invitePickerFor, setInvitePickerFor] = useState<string | null>(null); // modId showing picker
+  const [selectedInvitees, setSelectedInvitees] = useState<string[]>([]); // clerkIds
+  const [sendingInvites, setSendingInvites] = useState(false);
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.replace("/");
@@ -38,9 +48,72 @@ export default function MojeModPage() {
     if (!isLoaded || !isSignedIn) return;
     fetch("/api/forge/mods")
       .then((r) => r.json())
-      .then((data) => setMods(data.mods ?? []))
+      .then((data) => {
+        const mods = data.mods ?? [];
+        setMods(mods);
+        setSubmittedIds(new Set(mods.filter((m: SavedMod) => m.status === "submitted").map((m: SavedMod) => m.id)));
+      })
       .finally(() => setLoading(false));
+    // Load group players if groupId present
+    if (groupId) {
+      fetch(`/api/groups/${groupId}/players`)
+        .then((r) => r.json())
+        .then((data) => setGroupPlayers(data.players ?? []));
+    }
   }, [isLoaded, isSignedIn]);
+
+  async function handleSubmit(modId: string) {
+    if (!groupId) { alert("Otwórz tę stronę z poziomu gry (link MOJE MODY w nagłówku gry)"); return; }
+    setSubmittingId(modId);
+    try {
+      const res = await fetch("/api/forge/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modId, groupId }),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Błąd"); }
+      setSubmittedIds((prev) => new Set([...prev, modId]));
+      setMods((prev) => prev.map((m) => m.id === modId ? { ...m, status: "submitted" } : m));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Błąd wysyłania");
+    } finally {
+      setSubmittingId(null);
+    }
+  }
+
+  async function handleSendInvites(roomId: string) {
+    if (selectedInvitees.length === 0) return;
+    const modId = invitePickerFor!;
+    const modName = mods.find((m) => m.id === modId)?.config.name ?? "Mod";
+    setSendingInvites(true);
+    try {
+      await Promise.all(
+        selectedInvitees.map((clerkId) =>
+          fetch("/api/notifications", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              recipientClerkId: clerkId,
+              type: "test_invite",
+              payload: { roomId, modName, inviterName: "Ty" },
+            }),
+          })
+        )
+      );
+      setInvitePickerFor(null);
+      setSelectedInvitees([]);
+    } finally {
+      setSendingInvites(false);
+    }
+  }
+
+  function toggleInvitee(clerkId: string) {
+    setSelectedInvitees((prev) =>
+      prev.includes(clerkId)
+        ? prev.filter((id) => id !== clerkId)
+        : prev.length < 2 ? [...prev, clerkId] : prev
+    );
+  }
 
   async function handleCreateTestRoom(modId: string, modConfig: ModConfig) {
     setCreatingTestRoomFor(modId);
@@ -170,33 +243,81 @@ export default function MojeModPage() {
                 </span>
               </div>
 
-              {/* Test room invite link */}
+              {/* Test room invite link + player picker */}
               {testRoomIds[mod.id] && (
-                <div style={{
-                  background: "rgba(0,227,100,0.06)", border: "1px solid rgba(0,227,100,0.2)",
-                  borderRadius: 3, padding: "8px 10px", marginBottom: 8,
-                  display: "flex", alignItems: "center", gap: 8,
-                }}>
-                  <span style={{ fontSize: 11, color: "rgba(0,227,100,0.7)", flex: 1, fontFamily: "monospace", wordBreak: "break-all" }}>
-                    {`${typeof window !== "undefined" ? window.location.origin : ""}/game?mode=test&roomId=${testRoomIds[mod.id]}`}
-                  </span>
-                  <button onClick={() => handleCopyLink(mod.id, testRoomIds[mod.id])} style={{ ...smallBtnStyle, color: copiedId === mod.id ? "#4ade80" : "rgba(0,227,100,0.7)", borderColor: "rgba(0,227,100,0.3)", flexShrink: 0 }}>
-                    {copiedId === mod.id ? "✓ Skopiowano" : "Kopiuj"}
-                  </button>
-                  <a href={`/game?mode=test&roomId=${testRoomIds[mod.id]}`} style={{ ...smallBtnStyle, textDecoration: "none", color: "rgba(0,227,100,0.7)", borderColor: "rgba(0,227,100,0.3)", flexShrink: 0 }}>
-                    Wejdź →
-                  </a>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 4 }}>
+                  <div style={{
+                    background: "rgba(0,227,100,0.06)", border: "1px solid rgba(0,227,100,0.2)",
+                    borderRadius: 3, padding: "8px 10px",
+                    display: "flex", alignItems: "center", gap: 8,
+                  }}>
+                    <span style={{ fontSize: 11, color: "rgba(0,227,100,0.7)", flex: 1, fontFamily: "monospace", wordBreak: "break-all" }}>
+                      {`${typeof window !== "undefined" ? window.location.origin : ""}/game?mode=test&roomId=${testRoomIds[mod.id]}`}
+                    </span>
+                    <button onClick={() => handleCopyLink(mod.id, testRoomIds[mod.id])} style={{ ...smallBtnStyle, color: copiedId === mod.id ? "#4ade80" : "rgba(0,227,100,0.7)", borderColor: "rgba(0,227,100,0.3)", flexShrink: 0 }}>
+                      {copiedId === mod.id ? "✓ Skopiowano" : "Kopiuj"}
+                    </button>
+                    <a href={`/game?mode=test&roomId=${testRoomIds[mod.id]}`} style={{ ...smallBtnStyle, textDecoration: "none", color: "rgba(0,227,100,0.7)", borderColor: "rgba(0,227,100,0.3)", flexShrink: 0 }}>
+                      Wejdź →
+                    </a>
+                  </div>
+
+                  {/* Player picker — only when groupId known */}
+                  {groupPlayers.length > 0 && (
+                    <>
+                      {invitePickerFor !== mod.id ? (
+                        <button onClick={() => { setInvitePickerFor(mod.id); setSelectedInvitees([]); }} style={{ ...smallBtnStyle, alignSelf: "flex-start" }}>
+                          + Zaproś graczy z grupy
+                        </button>
+                      ) : (
+                        <div style={{ background: "rgba(0,227,253,0.05)", border: "1px solid rgba(0,227,253,0.15)", borderRadius: 3, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+                          <p style={{ margin: 0, fontSize: 11, color: "rgba(0,227,253,0.7)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                            Wybierz max 2 graczy do zaproszenia
+                          </p>
+                          {groupPlayers.map((p) => (
+                            <label key={p.clerkId} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                              <input
+                                type="checkbox"
+                                checked={selectedInvitees.includes(p.clerkId)}
+                                onChange={() => toggleInvitee(p.clerkId)}
+                                disabled={!selectedInvitees.includes(p.clerkId) && selectedInvitees.length >= 2}
+                              />
+                              <span style={{ fontSize: 13, color: "#e4e3fe" }}>{p.nickname}</span>
+                            </label>
+                          ))}
+                          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                            <button
+                              onClick={() => handleSendInvites(testRoomIds[mod.id])}
+                              disabled={selectedInvitees.length === 0 || sendingInvites}
+                              style={selectedInvitees.length > 0 && !sendingInvites ? { ...smallBtnStyle, color: "#00e3fd", borderColor: "rgba(0,227,253,0.4)" } : smallBtnStyle}
+                            >
+                              {sendingInvites ? "Wysyłam..." : `Wyślij zaproszenia (${selectedInvitees.length})`}
+                            </button>
+                            <button onClick={() => setInvitePickerFor(null)} style={smallBtnStyle}>Anuluj</button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
 
               {/* Buttons */}
               <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  title="Dostępne w W45 — wysyłanie do głosowania grupowego"
-                  style={{ ...disabledSmallBtnStyle, flex: 1 }}
-                >
-                  Wyślij do głosowania
-                </button>
+                {submittedIds.has(mod.id) ? (
+                  <a href={`/forge/vote/${mod.id}`} style={{ ...disabledSmallBtnStyle, flex: 1, textDecoration: "none", textAlign: "center", color: "#00e3fd", borderColor: "rgba(0,227,253,0.3)", cursor: "pointer" }}>
+                    Zobacz głosowanie →
+                  </a>
+                ) : (
+                  <button
+                    onClick={() => handleSubmit(mod.id)}
+                    disabled={submittingId === mod.id || !groupId}
+                    title={!groupId ? "Otwórz z poziomu gry (link MOJE MODY w nagłówku)" : "Wyślij do głosowania grupie"}
+                    style={groupId && submittingId !== mod.id ? { ...disabledSmallBtnStyle, flex: 1, cursor: "pointer", color: "#FF8C00", borderColor: "rgba(255,140,0,0.4)" } : { ...disabledSmallBtnStyle, flex: 1 }}
+                  >
+                    {submittingId === mod.id ? "..." : "Wyślij do głosowania"}
+                  </button>
+                )}
                 {!testRoomIds[mod.id] ? (
                   <button
                     onClick={() => handleCreateTestRoom(mod.id, mod.config)}

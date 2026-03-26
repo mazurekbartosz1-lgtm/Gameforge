@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-26 (Session 22 — W44: TestRoom, notifications, cost optimization)
+2026-03-26 (Session 23 — W45: Submit mod to vote, player picker, vote page)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -43,6 +43,7 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ Wieczór 43 (Session 21): Claude API generate ModConfig
 - ✅ Cost optimization (Session 22): `/forge/clarify` → `claude-haiku-4-5-20251001` (oszczędność ~29%/miesiąc)
 - ✅ Wieczór 44 (Session 22): TestRoom + NotificationBell — `server/src/TestRoom.ts` (extends GameRoom, maxClients=3, autoDispose=false, 30min TTL, skipEventPersistence=true, _savePlayerState no-op); `server/src/index.ts` rejestruje `test_room`; GameRoom: `ruleEngine`/`masterTick`/`registerMessageHandlers` → `protected`, flaga `skipEventPersistence`; `ColyseusClient.ts` + `createTestRoom()`/`joinTestRoom()`; `PhaserGame.tsx` obsługuje `mode=test&roomId=`; `forge/page.tsx` + `moje-mody/page.tsx` — przycisk "Testuj mod", link zaproszenia, "Kopiuj"; `GameHeader.tsx` — baner TRYB TESTOWY + NotificationBell; `src/app/components/NotificationBell.tsx` (polling 30s, dropdown, klik → redirect); `api/notifications/route.ts` (GET+POST); `api/notifications/[id]/route.ts` (PATCH); Supabase tabela `notifications(id, recipient_id, type, payload, read, created_at)`
+- ✅ Wieczór 45 (Session 23): Submit mod do głosowania + player picker — `server/src/db.ts` `submitModToGroup()`; `GameRoom.ts` handler `submit_mod`; `PlayScene.ts` handler `mod_submitted` → EventLog; `api/forge/submit/route.ts` (POST); `api/forge/mods/[id]/route.ts` (GET, publiczny); `api/groups/[groupId]/players/route.ts` (GET); `forge/moje-mody/page.tsx` player picker (max 2, zaproszenia), aktywny "Wyślij do głosowania"; `forge/page.tsx` aktywny submit button + `handleSubmitToVote()`; `forge/vote/[modId]/page.tsx` strona głosowania (przycisk wyłączony do W46)
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`

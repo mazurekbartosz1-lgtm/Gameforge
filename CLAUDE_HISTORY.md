@@ -1190,6 +1190,38 @@ Pamiętaj: `ANTHROPIC_API_KEY` dodać na Vercel przed deplojem.
 
 ---
 
+## Session 40 — 2026-03-26 (Session 23)
+
+### What was done
+- **Wieczór 45 COMPLETE ✅** — Submit mod do grupy + player picker + vote page
+- `server/src/db.ts` — `submitModToGroup(modId, groupId)`: updates `mod_configs.status` → `"submitted"`, ustawia `group_id`, zwraca `{ name, description }`
+- `server/src/GameRoom.ts` — handler `submit_mod` (broadcast `mod_submitted` z name/description/createdBy)
+- `src/app/game/scenes/PlayScene.ts` — handler `mod_submitted` → dispatch `gameRoomEvent` → EventLog
+- `src/app/game/GameHeader.tsx` — link "MOJE MODY" zawiera `?groupId=xxx` gdy groupId w URL
+- `src/app/api/forge/submit/route.ts` (nowy) — POST, Clerk auth, walidacja własności, aktualizacja status → "submitted"
+- `src/app/api/forge/mods/[id]/route.ts` (nowy) — GET, zwraca pojedynczy mod (publiczny)
+- `src/app/api/groups/[groupId]/players/route.ts` (nowy) — GET, gracze z `player_room_states` dla grupy, bez aktualnego użytkownika
+- `src/app/forge/moje-mody/page.tsx` — player picker (checkboxy, max 2), "Wyślij zaproszenia" → POST /api/notifications, aktywny przycisk "Wyślij do głosowania" → POST /api/forge/submit; naprawa TS: status type rozszerzony o "submitted"
+- `src/app/forge/page.tsx` — aktywny przycisk "Wyślij do głosowania" (czyta groupId z URL), `handleSubmitToVote()`, link "Zobacz głosowanie →" po wysłaniu
+- `src/app/forge/vote/[modId]/page.tsx` (nowy) — strona z detalami moda (monster variants, food, rules), przycisk głosowania (wyłączony, W46)
+
+### Decisions made
+- `SavedMod.status` rozszerzony o `"submitted"` (wcześniej brakujące w union type)
+- Przycisk "Wyślij do głosowania" w forge/page.tsx jest disabled gdy brak `groupId` w URL (z tooltip wyjaśniającym), ale aktywny gdy groupId obecny
+- Vote page (`/forge/vote/[modId]`) jest publiczna (GET moda bez auth) dla ułatwienia linku do głosowania
+
+### Problems encountered
+- TS error w moje-mody/page.tsx: `SavedMod.status` nie zawierał `"submitted"` — naprawione przez rozszerzenie union type
+
+### Next step
+**Wieczór 46** — Pełny system głosowania:
+- Supabase tabela `votes(id, mod_id, player_id, created_at)` z constraint `UNIQUE(mod_id, player_id)`
+- API: `POST /api/forge/vote` (max 3 głosy/tydzień na gracza), `GET /api/forge/vote/[modId]`
+- Vote page: aktywny przycisk ❤ Zagłosuj (z limitem), licznik głosów ukryty do zakończenia głosowania
+- Gdy gracz głosuje → notyfikacja `mod_voted` dla twórcy moda
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

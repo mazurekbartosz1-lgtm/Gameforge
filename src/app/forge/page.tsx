@@ -23,7 +23,11 @@ export default function ForgePage() {
   const [savedModId, setSavedModId] = useState<string | null>(null);
   const [testRoomId, setTestRoomId] = useState<string | null>(null);
   const [creatingTestRoom, setCreatingTestRoom] = useState(false);
+  const [submittingToVote, setSubmittingToVote] = useState(false);
+  const [submittedToVote, setSubmittedToVote] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+
+  const groupId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("groupId") : null;
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.replace("/");
@@ -90,6 +94,27 @@ export default function ForgePage() {
     setAnswers(["", "", ""]);
     setModConfig(null);
     setTestRoomId(null);
+  }
+
+  async function handleSubmitToVote() {
+    if (!savedModId || !groupId) {
+      alert(language === "pl" ? "Otwórz Forge z poziomu gry (link MOJE MODY w nagłówku)" : "Open Forge from within the game (MOJE MODY link in header)");
+      return;
+    }
+    setSubmittingToVote(true);
+    try {
+      const res = await fetch("/api/forge/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modId: savedModId, groupId }),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Błąd"); }
+      setSubmittedToVote(true);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Błąd wysyłania");
+    } finally {
+      setSubmittingToVote(false);
+    }
   }
 
   async function handleCreateTestRoom() {
@@ -326,12 +351,23 @@ export default function ForgePage() {
                     : (language === "pl" ? "Testuj mod" : "Test mod")}
                 </button>
               )}
-              <button
-                style={disabledBtnStyle}
-                title={language === "pl" ? "Dostępne w W45" : "Coming in W45"}
-              >
-                {L.submitVoteBtn}
-              </button>
+              {submittedToVote ? (
+                <a
+                  href={`/forge/vote/${savedModId}`}
+                  style={{ ...primaryBtnStyle, textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center" }}
+                >
+                  {language === "pl" ? "Zobacz głosowanie →" : "See vote →"}
+                </a>
+              ) : (
+                <button
+                  onClick={handleSubmitToVote}
+                  disabled={submittingToVote || !groupId}
+                  style={submittingToVote || !groupId ? disabledBtnStyle : primaryBtnStyle}
+                  title={!groupId ? (language === "pl" ? "Otwórz Forge z poziomu gry" : "Open Forge from within the game") : undefined}
+                >
+                  {submittingToVote ? "..." : L.submitVoteBtn}
+                </button>
+              )}
             </div>
           </div>
         )}

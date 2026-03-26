@@ -646,6 +646,15 @@ export class PlayScene extends Scene {
       }}));
     });
 
+    room.onMessage("mod_submitted", (data: { modId: string; name: string; createdBy: string }) => {
+      window.dispatchEvent(new CustomEvent("gameRoomEvent", { detail: {
+        id: `mod_${Date.now()}`, type: "mod_submitted",
+        playerName: data.createdBy,
+        message: `🔧 ${data.createdBy} zgłosił "${data.name}" do głosowania → /forge/vote/${data.modId}`,
+        timestamp: Date.now(),
+      }}));
+    });
+
     room.onMessage("stats_update", (data: { hp: number; maxHp: number; hunger: number; sanity: number; attack: number; defense: number; nickname: string; isNight: boolean; worldTime: number; equipment?: Record<string, string> }) => {
       window.dispatchEvent(new CustomEvent("gameStats", { detail: data }));
       if (data.equipment) { this.myEquipment = data.equipment; this.invUI.updateEquipment(data.equipment); }
