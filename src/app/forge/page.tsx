@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import ModInput from "../components/ModInput";
 import ForgeNav from "../components/ForgeNav";
 import type { ModConfig } from "@/shared/modConfig";
+import { useLastGameUrl } from "../hooks/useLastGameUrl";
 
 type Language = "pl" | "en";
 type Stage = "input" | "loading_clarify" | "questions" | "loading_generate" | "generated" | "error";
@@ -14,6 +15,7 @@ export default function ForgePage() {
   const { isLoaded, isSignedIn } = useUser();
   const router = useRouter();
 
+  const lastGameUrl = useLastGameUrl();
   const [stage, setStage] = useState<Stage>("input");
   const [description, setDescription] = useState("");
   const [language, setLanguage] = useState<Language>("pl");
@@ -160,7 +162,7 @@ export default function ForgePage() {
     <div style={{ minHeight: "100vh", background: "#0b0c1f", display: "flex", flexDirection: "column", alignItems: "center", padding: "48px 24px" }}>
       {/* Header */}
       <div style={{ width: "100%", maxWidth: 600, marginBottom: 32 }}>
-        <a href="/" style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,140,0,0.5)", textDecoration: "none", fontWeight: 700 }}>
+        <a href={lastGameUrl} style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,140,0,0.5)", textDecoration: "none", fontWeight: 700 }}>
           ← Gameforge
         </a>
         <h1 style={{ fontFamily: "var(--font-pixel), 'Press Start 2P', monospace", fontSize: 13, color: "#FF8C00", textTransform: "uppercase", marginTop: 16, marginBottom: 8, lineHeight: 1.7, letterSpacing: "0.03em" }}>

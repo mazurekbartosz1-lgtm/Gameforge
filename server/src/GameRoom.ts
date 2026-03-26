@@ -244,6 +244,9 @@ export class GameRoom extends Room<GameRoomOptions> {
   protected skipEventPersistence = false;
   /** IDs of approved mods already loaded into this room instance. */
   private loadedModIds = new Set<string>();
+  /** Per-mod tracking of what was registered, so we can undo it on deactivation. */
+  private loadedModVariantIds = new Map<string, string[]>();
+  private loadedModRuleIds = new Map<string, string[]>();
   /** Throttle for on_hunger_low: sessionId → last fired timestamp. */
   private hungerLowThrottle = new Map<string, number>();
 
@@ -294,11 +297,17 @@ export class GameRoom extends Room<GameRoomOptions> {
     if (this.groupId) {
       const approved = await loadApprovedMods(this.groupId);
       for (const mod of approved) this.applyMod(mod.id, mod.config);
-      // Poll for newly approved mods every 60s
+      // Poll for newly approved mods + detect deactivated ones every 60s
       this.clock.setInterval(async () => {
         const latest = await loadApprovedMods(this.groupId!);
+        const latestIds = new Set(latest.map((m) => m.id));
+        // Apply new mods
         for (const mod of latest) {
           if (!this.loadedModIds.has(mod.id)) this.applyMod(mod.id, mod.config);
+        }
+        // Deactivate mods no longer approved (deleted/reverted)
+        for (const loadedId of [...this.loadedModIds]) {
+          if (!latestIds.has(loadedId)) this.deactivateMod(loadedId);
         }
       }, 60_000);
     }
@@ -312,6 +321,7 @@ export class GameRoom extends Room<GameRoomOptions> {
     this.loadedModIds.add(modId);
 
     const variants: any[] = config.monsterVariants ?? [];
+    const variantIds: string[] = [];
     for (const v of variants) {
       const configId = `mod_${v.id}`;
       MONSTER_CONFIG[configId] = {
@@ -326,13 +336,33 @@ export class GameRoom extends Room<GameRoomOptions> {
         particleEffect: v.particleEffect,
         dropTable: v.dropTable ?? [],
       };
+      variantIds.push(configId);
     }
+    this.loadedModVariantIds.set(modId, variantIds);
 
     const rules: any[] = config.rules ?? [];
     if (rules.length > 0) this.ruleEngine.addRules(rules);
+    this.loadedModRuleIds.set(modId, rules.map((r) => r.id));
 
     console.log(`[GameRoom] Applied mod ${modId} — variants: ${variants.length}, rules: ${rules.length}`);
     this.broadcast("mod_activated", { modId, name: config.name ?? modId });
+  }
+
+  /** Remove a mod's variants and rules from the live room. */
+  protected deactivateMod(modId: string): void {
+    if (!this.loadedModIds.has(modId)) return;
+    this.loadedModIds.delete(modId);
+
+    const variantIds = this.loadedModVariantIds.get(modId) ?? [];
+    for (const configId of variantIds) delete MONSTER_CONFIG[configId];
+    this.loadedModVariantIds.delete(modId);
+
+    const ruleIds = this.loadedModRuleIds.get(modId) ?? [];
+    if (ruleIds.length > 0) this.ruleEngine.removeRulesByIds(ruleIds);
+    this.loadedModRuleIds.delete(modId);
+
+    console.log(`[GameRoom] Deactivated mod ${modId}`);
+    this.broadcast("mod_deactivated", { modId });
   }
 
   async onJoin(client: Client, options: { token?: string; nickname?: string }) {

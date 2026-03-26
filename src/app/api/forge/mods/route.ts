@@ -1,6 +1,8 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
 
 const supabase = createClient(
   process.env.SUPABASE_URL ?? "",
@@ -46,6 +48,11 @@ export async function DELETE(req: Request) {
 
   const { id } = await req.json();
 
+  // Check if caller is admin
+  const user = await currentUser();
+  const email = user?.emailAddresses?.[0]?.emailAddress?.toLowerCase() ?? "";
+  const isAdmin = ADMIN_EMAILS.includes(email);
+
   const { data: player } = await supabase
     .from("players")
     .select("id")
@@ -54,12 +61,11 @@ export async function DELETE(req: Request) {
 
   if (!player) return NextResponse.json({ error: "Player not found" }, { status: 404 });
 
-  const { error } = await supabase
-    .from("mod_configs")
-    .update({ status: "deleted" })
-    .eq("id", id)
-    .eq("created_by", player.id);
+  // Admin can delete any mod; regular user only their own
+  let query = supabase.from("mod_configs").update({ status: "deleted" }).eq("id", id);
+  if (!isAdmin) query = query.eq("created_by", player.id);
 
+  const { error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });

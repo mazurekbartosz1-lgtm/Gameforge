@@ -1339,6 +1339,39 @@ Pamiętaj: `ANTHROPIC_API_KEY` dodać na Vercel przed deplojem.
 
 ---
 
+## Session 45 — 2026-03-26 (Session 26)
+
+### What was done
+- **Task 46 COMPLETE ✅** — Pełny system głosowania
+- Supabase tabela `votes(id, mod_id, player_id, created_at)` z `UNIQUE(mod_id, player_id)` (SQL wykonany ręcznie)
+- `src/app/api/forge/vote/route.ts` (nowy) — `POST /api/forge/vote`: Clerk auth, limit 3/tydzień, unique constraint → 409, próg `VOTE_THRESHOLD=1` → status `approved`, notyfikacja `mod_voted` dla autora (skip jeśli głosuje własny mod)
+- `src/app/api/forge/vote/[modId]/route.ts` (nowy) — `GET`: voted bool + count + weeklyRemaining
+- `src/app/api/forge/votes/remaining/route.ts` (nowy) — `GET /api/forge/votes/remaining`: tygodniowy limit bez potrzeby modId
+- `src/app/forge/vote/[modId]/page.tsx` — aktywny przycisk ❤ Zagłosuj (pomarańczowy), zielony po zagłosowaniu, licznik głosów + weeklyRemaining
+- **Admin delete** — `src/app/api/me/route.ts` (nowy): `{ isAdmin }` check via `ADMIN_EMAILS` env var; `DELETE /api/forge/mods` pomija `created_by` filter dla admina; przycisk Usuń na `/forge/glosowanie` (admin only, position absolute)
+- **Aktywne Mody modal** w `GameHeader.tsx` — przycisk AKTYWNE MODY (zielony), modal z listą approved modów, ✕ admin delete per mod, link "WSZYSTKIE GŁOSOWANIA →", link "Zobacz →" per mod
+- **`forge/glosowanie/page.tsx`** — serduszka tygodniowe na górze (❤❤❤ filled/empty), przycisk Zagłosuj per kafelek (głosowanie bez opuszczania strony), badge Zatwierdzony (zielony), per-mod vote status ładowany w parallel
+- **`forge/moje-mody/page.tsx`** — approved mod chowa Testuj/Wyślij do głosowania/Usuń, pokazuje "Aktywny — Zobacz →" (zielony)
+- **`src/app/hooks/useLastGameUrl.ts`** (nowy) — hook czytający `localStorage.lastGameUrl`; GameHeader zapisuje URL przy każdym wejściu do gry; wszystkie linki ← Gameforge na stronach forge prowadzą do ostatniego pokoju
+- **`GET /api/forge/mods/approved`** (nowy) — lista approved modów dla grupy; używany przez modal Aktywne Mody
+- **Deactivation modów** — `RuleEngine.removeRulesByIds()`; `GameRoom.deactivateMod()` usuwa warianty z MONSTER_CONFIG + reguły z RuleEngine; `loadedModVariantIds`/`loadedModRuleIds` Map do śledzenia co mod dodał; polling co 60s wykrywa mody nie-approved i deaktywuje je; broadcast `mod_deactivated` do klientów
+
+### Decisions made
+- `VOTE_THRESHOLD=1` — na czas testów; **TODO: zmienić na 3 przed produkcją** (`src/app/api/forge/vote/route.ts:13`)
+- `ADMIN_EMAILS` env var (comma-separated) — dodać w `.env.local` i Vercel: `mazurekbartosz1@gmail.com`
+- Admin delete na glosowanie page: `position: absolute` button w prawym górnym rogu kafelka — nie koliduje z linkiem do vote page
+- Deactivation: polling co 60s (max opóźnienie od delete do wycofania z gry); nie ma instant push z API do Colyseus — akceptowalne
+- `useLastGameUrl`: fallback `/` gdy localStorage pusty (pierwsza wizyta bez gry)
+
+### Problems encountered
+- Brak — kompilacja czysta po każdym kroku
+
+### Next step
+- **TODO przed produkcją:** zmienić `VOTE_THRESHOLD=1` → `3` w `src/app/api/forge/vote/route.ts:13`
+- **Następna funkcja:** do ustalenia — sprawdź PLAN.md pod kolejne zadania (W47+)
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

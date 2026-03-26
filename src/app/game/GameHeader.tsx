@@ -13,6 +13,13 @@ const S = {
 type RoomInfo = { playerCount: number; roomId: string };
 type Stats = { isNight: boolean; worldTime: number };
 
+interface ApprovedMod {
+  id: string;
+  config: { name: string; description: string; monsterVariants?: { tint: number; name: string }[] };
+  votes: number;
+  players?: { nickname: string };
+}
+
 // 1 day = 4h real = 0–1 worldTime. Day = 0–0.5, Night = 0.5–1
 // Phase progress: how far into current phase (0–1)
 function phaseProgress(worldTime: number): number {
@@ -41,6 +48,13 @@ export default function GameHeader() {
   const prevIsNightRef = useRef<boolean | null>(null);
 
   useEffect(() => {
+    // Save last game URL so forge pages can link back
+    if (typeof window !== "undefined") {
+      localStorage.setItem("lastGameUrl", window.location.pathname + window.location.search);
+    }
+  }, []);
+
+  useEffect(() => {
     const onRoomInfo = (e: Event) => setRoomInfo((e as CustomEvent<RoomInfo>).detail);
     const onStats = (e: Event) => {
       const data = (e as CustomEvent<Stats>).detail;
@@ -57,6 +71,38 @@ export default function GameHeader() {
       window.removeEventListener("gameStats", onStats);
     };
   }, []);
+
+  const [modsOpen, setModsOpen] = useState(false);
+  const [approvedMods, setApprovedMods] = useState<ApprovedMod[]>([]);
+  const [modsLoading, setModsLoading] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [deletingModId, setDeletingModId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/me").then((r) => r.json()).then((d) => setIsAdmin(d.isAdmin ?? false)).catch(() => {});
+  }, []);
+
+  function openMods() {
+    setModsOpen(true);
+    const gId = searchParams.get("groupId");
+    const url = gId ? `/api/forge/mods/approved?groupId=${gId}` : "/api/forge/mods/approved";
+    setModsLoading(true);
+    fetch(url)
+      .then((r) => r.json())
+      .then((d) => setApprovedMods(d.mods ?? []))
+      .finally(() => setModsLoading(false));
+  }
+
+  async function handleDeleteMod(modId: string) {
+    setDeletingModId(modId);
+    await fetch("/api/forge/mods", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: modId }),
+    });
+    setApprovedMods((prev) => prev.filter((m) => m.id !== modId));
+    setDeletingModId(null);
+  }
 
   const isNight = stats?.isNight ?? false;
   const wt = stats?.worldTime ?? 0;
@@ -157,6 +203,17 @@ export default function GameHeader() {
       {/* RIGHT — historia + moje mody + dzwonek + leave */}
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
       <NotificationBell />
+      <button
+        onClick={openMods}
+        style={{
+          fontFamily: S.pixel, fontSize: 8, letterSpacing: "0.05em",
+          textTransform: "uppercase", color: "#4ade80", textDecoration: "none",
+          border: "1px solid rgba(74,222,128,0.3)", padding: "5px 10px", whiteSpace: "nowrap",
+          background: "transparent", cursor: "pointer", opacity: 0.9,
+        }}
+      >
+        AKTYWNE MODY
+      </button>
       <a
         href={(() => {
           const gId = searchParams.get("groupId");
@@ -214,6 +271,119 @@ export default function GameHeader() {
       </a>
       </div>
     </div>
+      {modsOpen && (
+        <div
+          onClick={() => setModsOpen(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 1000,
+            background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#0b0c1f", border: "1px solid rgba(74,222,128,0.25)",
+              borderTop: "2px solid #4ade80", borderRadius: 4,
+              width: "100%", maxWidth: 520, maxHeight: "80vh",
+              display: "flex", flexDirection: "column", overflow: "hidden",
+            }}
+          >
+            {/* Modal header */}
+            <div style={{ padding: "16px 20px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontFamily: S.pixel, fontSize: 11, color: "#4ade80", letterSpacing: "0.1em" }}>
+                AKTYWNE MODY
+              </span>
+              <button
+                onClick={() => setModsOpen(false)}
+                style={{ background: "none", border: "none", color: "rgba(255,255,255,0.3)", fontSize: 16, cursor: "pointer", padding: "0 4px", lineHeight: 1 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div style={{ overflowY: "auto", padding: "12px 20px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+              {modsLoading && (
+                <span style={{ color: "rgba(255,255,255,0.25)", fontSize: 12, letterSpacing: "0.1em", textAlign: "center", padding: 24 }}>ŁADOWANIE...</span>
+              )}
+              {!modsLoading && approvedMods.length === 0 && (
+                <div style={{ textAlign: "center", padding: 32 }}>
+                  <p style={{ color: "rgba(255,255,255,0.25)", fontSize: 12, letterSpacing: "0.06em", margin: 0 }}>
+                    Brak aktywnych modów w tej grupie.
+                  </p>
+                  <p style={{ color: "rgba(255,255,255,0.15)", fontSize: 11, margin: "8px 0 0" }}>
+                    Zagłosuj na mod w zakładce Głosowanie, żeby go aktywować.
+                  </p>
+                </div>
+              )}
+              {!modsLoading && approvedMods.map((mod) => {
+                const gId = searchParams.get("groupId");
+                const voteLink = gId
+                  ? `/forge/vote/${mod.id}?groupId=${gId}`
+                  : `/forge/vote/${mod.id}`;
+                const tint = mod.config.monsterVariants?.[0]?.tint;
+                const tintHex = tint !== undefined ? "#" + tint.toString(16).padStart(6, "0") : null;
+                return (
+                  <div key={mod.id} style={{
+                    background: "rgba(74,222,128,0.04)", border: "1px solid rgba(74,222,128,0.12)",
+                    borderRadius: 4, padding: "12px 14px",
+                    display: "flex", flexDirection: "column", gap: 6,
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {tintHex && (
+                        <span style={{ width: 10, height: 10, borderRadius: "50%", background: tintHex, flexShrink: 0, border: "1px solid rgba(255,255,255,0.15)" }} />
+                      )}
+                      <span style={{ fontFamily: S.pixel, fontSize: 9, color: "#4ade80", letterSpacing: "0.05em", lineHeight: 1.6, flex: 1 }}>
+                        {mod.config.name}
+                      </span>
+                      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", whiteSpace: "nowrap" }}>
+                        ❤ {mod.votes}
+                      </span>
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleDeleteMod(mod.id)}
+                          disabled={deletingModId === mod.id}
+                          style={{ background: "none", border: "none", color: "rgba(248,113,113,0.5)", fontSize: 13, cursor: "pointer", padding: "0 2px", lineHeight: 1, flexShrink: 0 }}
+                          title="Usuń mod (admin)"
+                        >
+                          {deletingModId === mod.id ? "..." : "✕"}
+                        </button>
+                      )}
+                    </div>
+                    <p style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", margin: 0, lineHeight: 1.5 }}>
+                      {mod.config.description}
+                    </p>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 2 }}>
+                      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", letterSpacing: "0.04em" }}>
+                        autor: {mod.players?.nickname ?? "?"}
+                      </span>
+                      <a
+                        href={voteLink}
+                        style={{ fontSize: 10, color: "#FF8C00", letterSpacing: "0.08em", textTransform: "uppercase", textDecoration: "none", fontWeight: 700 }}
+                      >
+                        Zobacz →
+                      </a>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer link to full vote list */}
+            <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", padding: "10px 20px", display: "flex", justifyContent: "flex-end" }}>
+              <a
+                href={(() => {
+                  const gId = searchParams.get("groupId");
+                  return gId ? `/forge/glosowanie?groupId=${gId}` : "/forge/glosowanie";
+                })()}
+                style={{ fontFamily: S.pixel, fontSize: 8, color: "#FF8C00", textDecoration: "none", letterSpacing: "0.08em", opacity: 0.8 }}
+              >
+                WSZYSTKIE GŁOSOWANIA →
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -86,6 +86,12 @@ export class RuleEngine {
     }
   }
 
+  /** Remove rules by their IDs (used when a mod is deactivated). */
+  removeRulesByIds(ruleIds: string[]): void {
+    const idSet = new Set(ruleIds)
+    this.rules = this.rules.filter((r) => !idSet.has(r.id))
+  }
+
   /** Replace active rules — called by AI mod pipeline (Wieczór 47). */
   applyModRules(rules: Rule[]): void {
     this.loadRules(rules)

@@ -14,6 +14,12 @@ interface ModData {
   players?: { nickname: string };
 }
 
+interface VoteStatus {
+  voted: boolean;
+  count: number;
+  weeklyRemaining: number;
+}
+
 export default function VotePage() {
   const params = useParams();
   const modId = params?.modId as string;
@@ -21,18 +27,47 @@ export default function VotePage() {
   const [mod, setMod] = useState<ModData | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [voteStatus, setVoteStatus] = useState<VoteStatus>({ voted: false, count: 0, weeklyRemaining: 3 });
+  const [voting, setVoting] = useState(false);
+
+  const fetchVoteStatus = (mid: string) =>
+    fetch(`/api/forge/vote/${mid}`)
+      .then((r) => r.json())
+      .then((d) => setVoteStatus(d))
+      .catch(() => {});
 
   useEffect(() => {
     if (!modId) return;
     fetch(`/api/forge/mods/${modId}`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.mod) setMod(data.mod);
-        else setNotFound(true);
+        if (data.mod) {
+          setMod(data.mod);
+          fetchVoteStatus(modId);
+        } else setNotFound(true);
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
   }, [modId]);
+
+  async function handleVote() {
+    if (voting || voteStatus.voted) return;
+    setVoting(true);
+    try {
+      const res = await fetch("/api/forge/vote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setVoteStatus((prev) => ({ ...prev, voted: true, count: data.votes }));
+        if (data.approved && mod) setMod({ ...mod, status: "approved" });
+      }
+    } finally {
+      setVoting(false);
+    }
+  }
 
   if (loading) return <Screen><span style={{ color: "rgba(255,255,255,0.3)", fontSize: 13, letterSpacing: "0.1em" }}>ŁADOWANIE...</span></Screen>;
   if (notFound || !mod) return <Screen><span style={{ color: "#f87171", fontSize: 13 }}>Mod nie znaleziony.</span></Screen>;
@@ -114,15 +149,21 @@ export default function VotePage() {
         )}
 
         {/* Vote button */}
-        <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)", paddingTop: 16, display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)", paddingTop: 16, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
           <button
-            style={disabledBtnStyle}
-            title="Głosowanie dostępne w W46"
+            onClick={handleVote}
+            disabled={voteStatus.voted || voting || mod.status === "approved"}
+            style={voteStatus.voted || mod.status === "approved" ? votedBtnStyle : activeBtnStyle}
           >
-            ❤ Zagłosuj
+            {voteStatus.voted ? "✓ Zagłosowano" : voting ? "..." : "❤ Zagłosuj"}
           </button>
-          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", letterSpacing: "0.06em" }}>
-            Głosowanie aktywne w kolejnej wersji
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", letterSpacing: "0.06em" }}>
+            {voteStatus.count} {voteStatus.count === 1 ? "głos" : "głosy"}
+            {!voteStatus.voted && voteStatus.weeklyRemaining > 0 && (
+              <span style={{ color: "rgba(255,255,255,0.2)", marginLeft: 8 }}>
+                · {voteStatus.weeklyRemaining} pozostałe w tym tygodniu
+              </span>
+            )}
           </span>
         </div>
       </div>
@@ -207,9 +248,16 @@ const linkStyle: React.CSSProperties = {
   color: "rgba(255,140,0,0.5)", textDecoration: "none", fontWeight: 700,
 };
 
-const disabledBtnStyle: React.CSSProperties = {
+const activeBtnStyle: React.CSSProperties = {
+  padding: "10px 24px", fontSize: 13, fontWeight: 700, letterSpacing: "0.1em",
+  textTransform: "uppercase", cursor: "pointer",
+  border: "1px solid #FF8C00", background: "rgba(255,140,0,0.15)",
+  color: "#FF8C00", borderRadius: 4,
+};
+
+const votedBtnStyle: React.CSSProperties = {
   padding: "10px 24px", fontSize: 13, fontWeight: 700, letterSpacing: "0.1em",
   textTransform: "uppercase", cursor: "default",
-  border: "1px solid rgba(255,140,0,0.2)", background: "rgba(255,140,0,0.05)",
-  color: "rgba(255,140,0,0.35)", borderRadius: 4,
+  border: "1px solid rgba(74,222,128,0.4)", background: "rgba(74,222,128,0.08)",
+  color: "#4ade80", borderRadius: 4,
 };
