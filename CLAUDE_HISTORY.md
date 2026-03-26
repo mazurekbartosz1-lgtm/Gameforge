@@ -1222,6 +1222,31 @@ Pamiętaj: `ANTHROPIC_API_KEY` dodać na Vercel przed deplojem.
 
 ---
 
+## Session 41 — 2026-03-26 (Session 23, kontynuacja)
+
+### What was done
+- `src/app/components/ForgeNav.tsx` (nowy) — 2 linki "Moje Mody" + "Głosowanie", podświetlenie aktywnej zakładki, zachowuje `?groupId=` w URLach
+- `src/app/forge/glosowanie/page.tsx` (nowy) — lista wszystkich modów ze statusem `submitted`; jeśli `?groupId=` w URL filtruje do grupy; klikalny kafelek → `/forge/vote/[modId]`
+- `src/app/api/forge/mods/submitted/route.ts` (nowy) — GET, publiczny endpoint, opcjonalny `?groupId=` filter, zwraca mody z `players(nickname)`
+- ForgeNav dodany do wszystkich stron forge: `forge/page.tsx`, `forge/moje-mody/page.tsx`, `forge/vote/[modId]/page.tsx`
+
+### Decisions made
+- `/forge/glosowanie` jest publiczne (bez auth) — każdy może zobaczyć zgłoszone mody
+- ForgeNav nie ma `active` prop na `/forge/page.tsx` (jest to strona tworzenia, nie przeglądania)
+- Na `/forge/vote/[modId]` zmieniono "← Moje Mody" → "← Głosowanie" (logiczniejszy breadcrumb)
+
+### Problems encountered
+- Brak — kompilacja czysta
+
+### Next step
+**Wieczór 46** — Pełny system głosowania:
+- Supabase tabela `votes(id, mod_id, player_id, created_at)` z constraint `UNIQUE(mod_id, player_id)`
+- API: `POST /api/forge/vote` (max 3 głosy/tydzień na gracza), `GET /api/forge/vote/[modId]`
+- Vote page: aktywny przycisk ❤ Zagłosuj (z limitem), licznik głosów
+- Gdy gracz głosuje → notyfikacja `mod_voted` dla twórcy moda
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,
