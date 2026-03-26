@@ -1277,6 +1277,40 @@ Pamiętaj: `ANTHROPIC_API_KEY` dodać na Vercel przed deplojem.
 
 ---
 
+## Session 43 — 2026-03-26 (Session 24)
+
+### What was done
+- **`src/app/devlog/page.tsx`** (nowy) — publiczna strona developer log:
+  - Tło: ten sam campfire URL co home page + embers z `.ember` klasy globals.css + scanline overlay
+  - Press Start 2P font (next/font/google) dla retro pixel etykiet
+  - Progress bar: 30 bloków pixelowych, 41/60 zadań = 68%, NEXT: T46
+  - 5 akordeonów (domyślnie zamknięte prócz MISSION): NOTIFY ME ON LAUNCH, MISSION, VALUES, SAFETY FILTER, TECH STACK
+  - DEV_LOG: 7 wpisów product-oriented w kolejności newest-first, każdy z checklistą ✓ i sekcją "! WHAT WAS HARD" (Problem/Solution)
+  - Strona w całości po angielsku; task prefix T (T44, T45...) zamiast W
+  - Formularz waitlist osadzony w akordeonie NOTIFY ME ON LAUNCH
+- **`src/app/api/waitlist/route.ts`** (nowy) — POST /api/waitlist: walidacja emaila regex, lowercase normalize, check duplikatu, insert do Supabase `waitlist`; zwraca 201/409/500
+- **Memory** — zapisano regułę: po każdym commicie aktualizować devlog (DEV_LOG entry + DONE_TASKS)
+
+### Decisions made
+- Devlog jako "use client" — potrzebny useState dla akordeonów i formularza
+- Press Start 2P w client component — next/font/google działa na poziomie modułu, build-time CSS
+- Formularz waitlist w akordeonie (domyślnie zamknięty) — nie dominuje strony, ale łatwo dostępny
+- Prefix T (Task) zamiast W (Wieczór) — bardziej neutralny, angielski
+- Waitlist table: UNIQUE constraint na email + maybeSingle() check przed insertem — oddzielna obsługa 409 na frontendzie
+
+### Problems encountered
+- Brak — kompilacja czysta
+
+### Next step
+**Task 46** — Pełny system głosowania:
+- Supabase tabela `votes(id, mod_id, player_id, created_at)` UNIQUE(mod_id, player_id)
+- `POST /api/forge/vote`: Clerk auth, max 3 głosy/tydzień na gracza, upsert vote, sprawdź próg → status `approved`
+- `forge/vote/[modId]`: aktywny przycisk ❤ Vote, licznik głosów
+- Notyfikacja `mod_voted` dla autora moda
+- Gdy mod → `approved`: GameRoom wykryje w ciągu 60s przez polling
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,
