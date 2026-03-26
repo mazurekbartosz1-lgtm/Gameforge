@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import type { ModConfig } from "@/shared/modConfig";
+import ForgeNav from "../../../components/ForgeNav";
 
 interface ModData {
   id: string;
@@ -43,7 +44,8 @@ export default function VotePage() {
     <div style={{ minHeight: "100vh", background: "#0b0c1f", display: "flex", flexDirection: "column", alignItems: "center", padding: "48px 24px" }}>
       {/* Header */}
       <div style={{ width: "100%", maxWidth: 600, marginBottom: 32 }}>
-        <a href="/forge/moje-mody" style={linkStyle}>← Moje Mody</a>
+        <a href="/forge/glosowanie" style={linkStyle}>← Głosowanie</a>
+        <ForgeNav active="glosowanie" />
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
           <h1 style={{ fontSize: 22, fontWeight: 900, color: "#FF8C00", textTransform: "uppercase", margin: 0, flex: 1 }}>
             {mod.config.name}

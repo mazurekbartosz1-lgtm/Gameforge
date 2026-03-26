@@ -4,6 +4,7 @@ import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import ModInput from "../components/ModInput";
+import ForgeNav from "../components/ForgeNav";
 import type { ModConfig } from "@/shared/modConfig";
 
 type Language = "pl" | "en";
@@ -168,6 +169,7 @@ export default function ForgePage() {
         <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", letterSpacing: "0.05em", margin: 0 }}>
           Describe what you want to change — Claude will help you design it.
         </p>
+        <ForgeNav groupId={groupId} />
       </div>
 
       {/* Card */}

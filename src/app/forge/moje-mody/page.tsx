@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { ModConfig } from "@/shared/modConfig";
 import NotificationBell from "../../components/NotificationBell";
+import ForgeNav from "../../components/ForgeNav";
 
 interface SavedMod {
   id: string;
@@ -172,6 +173,7 @@ export default function MojeModPage() {
         <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", margin: 0 }}>
           Przeglądaj swoje mody i wysyłaj je do głosowania grupie.
         </p>
+        <ForgeNav groupId={groupId} active="moje" />
       </div>
 
       {/* List */}
