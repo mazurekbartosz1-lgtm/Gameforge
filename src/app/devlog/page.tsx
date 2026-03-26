@@ -7,9 +7,9 @@ const pixelFont = Press_Start_2P({ weight: "400", subsets: ["latin"] });
 
 // ─── Plan progress ────────────────────────────────────────────────────────────
 const TOTAL_TASKS = 60;
-const DONE_TASKS = 42;
+const DONE_TASKS = 46;
 const PROGRESS_PCT = Math.round((DONE_TASKS / TOTAL_TASKS) * 100);
-const NEXT_LABEL = "T46 — Voting system";
+const NEXT_LABEL = "T47 — Next feature";
 
 // ─── Embers ───────────────────────────────────────────────────────────────────
 const EMBER_DATA = [
@@ -60,6 +60,26 @@ interface LogEntry {
 }
 
 const DEV_LOG: LogEntry[] = [
+  {
+    date: "2026-03-26",
+    tag: "devlog · gameplay",
+    title: "Players can now vote on mods — and approved ones go live automatically",
+    items: [
+      "Voting is fully live: each verified player gets 3 hearts per week to spend on mods they want to see in the game.",
+      "Once a mod reaches the approval threshold, its rules and monster variants become active in the group's game room within 60 seconds — no server restart needed.",
+      "The voting list now shows hearts directly on each card, so you don't need to open a separate page to cast your vote.",
+      "Approved mods show up in a new 'Active Mods' panel in the game header — one click to see what's currently shaping the world.",
+      "Mod authors get a notification when someone votes on their modification.",
+      "Deleted or reverted mods are automatically deactivated from the live room — monsters and rules added by the mod disappear within the minute.",
+      "The 'back to game' link on all forge pages now returns you to your last room, not just the homepage.",
+    ],
+    challenges: [
+      {
+        what: "Deactivating a mod mid-session required undoing everything it had registered: monster variants in a global config map, and rules inside the rule engine.",
+        how: "We now track exactly which variant IDs and rule IDs each mod added. On deactivation, those entries are removed surgically — default rules and other mods are untouched.",
+      },
+    ],
+  },
   {
     date: "2026-03-26",
     tag: "devlog · UI polish",
