@@ -33,11 +33,20 @@ export default function PhaserGame() {
             : user.username ?? user.emailAddresses[0]?.emailAddress?.split("@")[0] ?? undefined)
         : undefined;
 
-      const groupId = new URLSearchParams(window.location.search).get("groupId") ?? undefined;
+      const params = new URLSearchParams(window.location.search);
+      const groupId = params.get("groupId") ?? undefined;
+      const testMode = params.get("mode") === "test";
+      const testRoomId = params.get("roomId") ?? undefined;
 
       try {
-        const r = await connectRoom(token ?? undefined, nickname, groupId);
-        roomRef.current = r;
+        if (testMode && testRoomId) {
+          const { joinTestRoom } = await import("./network/ColyseusClient");
+          const r = await joinTestRoom(token ?? undefined, testRoomId);
+          roomRef.current = r;
+        } else {
+          const r = await connectRoom(token ?? undefined, nickname, groupId);
+          roomRef.current = r;
+        }
       } catch (err) {
         console.warn("Colyseus connection failed (offline?):", err);
         setStatus("playing");

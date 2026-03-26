@@ -4,6 +4,7 @@ import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { ModConfig } from "@/shared/modConfig";
+import NotificationBell from "../../components/NotificationBell";
 
 interface SavedMod {
   id: string;
@@ -25,6 +26,9 @@ export default function MojeModPage() {
   const [mods, setMods] = useState<SavedMod[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [testRoomIds, setTestRoomIds] = useState<Record<string, string>>({});
+  const [creatingTestRoomFor, setCreatingTestRoomFor] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.replace("/");
@@ -37,6 +41,33 @@ export default function MojeModPage() {
       .then((data) => setMods(data.mods ?? []))
       .finally(() => setLoading(false));
   }, [isLoaded, isSignedIn]);
+
+  async function handleCreateTestRoom(modId: string, modConfig: ModConfig) {
+    setCreatingTestRoomFor(modId);
+    try {
+      const colyseusHttp = (process.env.NEXT_PUBLIC_COLYSEUS_URL ?? "ws://localhost:2567")
+        .replace(/^wss:\/\//, "https://")
+        .replace(/^ws:\/\//, "http://");
+      const raw = await fetch(`${colyseusHttp}/matchmake/create/test_room`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ modConfig }),
+      }).then((r) => r.json());
+      if (!raw.roomId) throw new Error("No roomId returned");
+      setTestRoomIds((prev) => ({ ...prev, [modId]: raw.roomId as string }));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Błąd tworzenia pokoju testowego");
+    } finally {
+      setCreatingTestRoomFor(null);
+    }
+  }
+
+  function handleCopyLink(modId: string, roomId: string) {
+    const url = `${window.location.origin}/game?mode=test&roomId=${roomId}`;
+    navigator.clipboard.writeText(url);
+    setCopiedId(modId);
+    setTimeout(() => setCopiedId((prev) => prev === modId ? null : prev), 2000);
+  }
 
   async function handleDelete(id: string) {
     setDeletingId(id);
@@ -57,9 +88,10 @@ export default function MojeModPage() {
     <div style={{ minHeight: "100vh", background: "#0b0c1f", display: "flex", flexDirection: "column", alignItems: "center", padding: "48px 24px" }}>
       {/* Header */}
       <div style={{ width: "100%", maxWidth: 640, marginBottom: 32 }}>
-        <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 16, marginBottom: 16, alignItems: "center" }}>
           <a href="/" style={linkStyle}>← Gameforge</a>
           <a href="/forge" style={linkStyle}>+ Nowa modyfikacja</a>
+          <div style={{ marginLeft: "auto" }}><NotificationBell /></div>
         </div>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: "#FF8C00", textTransform: "uppercase", margin: "0 0 4px" }}>
           Moje Modyfikacje
@@ -138,6 +170,25 @@ export default function MojeModPage() {
                 </span>
               </div>
 
+              {/* Test room invite link */}
+              {testRoomIds[mod.id] && (
+                <div style={{
+                  background: "rgba(0,227,100,0.06)", border: "1px solid rgba(0,227,100,0.2)",
+                  borderRadius: 3, padding: "8px 10px", marginBottom: 8,
+                  display: "flex", alignItems: "center", gap: 8,
+                }}>
+                  <span style={{ fontSize: 11, color: "rgba(0,227,100,0.7)", flex: 1, fontFamily: "monospace", wordBreak: "break-all" }}>
+                    {`${typeof window !== "undefined" ? window.location.origin : ""}/game?mode=test&roomId=${testRoomIds[mod.id]}`}
+                  </span>
+                  <button onClick={() => handleCopyLink(mod.id, testRoomIds[mod.id])} style={{ ...smallBtnStyle, color: copiedId === mod.id ? "#4ade80" : "rgba(0,227,100,0.7)", borderColor: "rgba(0,227,100,0.3)", flexShrink: 0 }}>
+                    {copiedId === mod.id ? "✓ Skopiowano" : "Kopiuj"}
+                  </button>
+                  <a href={`/game?mode=test&roomId=${testRoomIds[mod.id]}`} style={{ ...smallBtnStyle, textDecoration: "none", color: "rgba(0,227,100,0.7)", borderColor: "rgba(0,227,100,0.3)", flexShrink: 0 }}>
+                    Wejdź →
+                  </a>
+                </div>
+              )}
+
               {/* Buttons */}
               <div style={{ display: "flex", gap: 8 }}>
                 <button
@@ -146,6 +197,24 @@ export default function MojeModPage() {
                 >
                   Wyślij do głosowania
                 </button>
+                {!testRoomIds[mod.id] ? (
+                  <button
+                    onClick={() => handleCreateTestRoom(mod.id, mod.config)}
+                    disabled={creatingTestRoomFor === mod.id}
+                    style={creatingTestRoomFor === mod.id ? disabledSmallBtnStyle : testSmallBtnStyle}
+                  >
+                    {creatingTestRoomFor === mod.id ? "..." : "Testuj"}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleCreateTestRoom(mod.id, mod.config)}
+                    disabled={creatingTestRoomFor === mod.id}
+                    style={{ ...testSmallBtnStyle, opacity: 0.5 }}
+                    title="Utwórz nowy pokój testowy"
+                  >
+                    Nowy test
+                  </button>
+                )}
                 <button
                   onClick={() => handleDelete(mod.id)}
                   disabled={deletingId === mod.id}
@@ -231,4 +300,16 @@ const deleteSmallBtnStyle: React.CSSProperties = {
   padding: "7px 12px", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em",
   textTransform: "uppercase", cursor: "pointer", border: "1px solid rgba(248,113,113,0.2)",
   background: "transparent", color: "rgba(248,113,113,0.5)", borderRadius: 3,
+};
+
+const testSmallBtnStyle: React.CSSProperties = {
+  padding: "7px 12px", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em",
+  textTransform: "uppercase", cursor: "pointer", border: "1px solid rgba(0,227,100,0.3)",
+  background: "rgba(0,227,100,0.08)", color: "rgba(0,227,100,0.8)", borderRadius: 3,
+};
+
+const smallBtnStyle: React.CSSProperties = {
+  padding: "4px 10px", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em",
+  textTransform: "uppercase", cursor: "pointer", border: "1px solid rgba(169,169,194,0.2)",
+  background: "transparent", color: "rgba(169,169,194,0.5)", borderRadius: 2,
 };

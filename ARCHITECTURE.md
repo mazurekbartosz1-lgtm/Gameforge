@@ -6,7 +6,7 @@ When finishing a session, ask Claude Code to update this file with any
 new decisions, installed packages, or structural changes made during the session.
 
 ## Last updated
-2026-03-25 (Session 21 — W41+W42+W43: ModInput, clarify, generate, moje-mody)
+2026-03-26 (Session 22 — W44: TestRoom, notifications, cost optimization)
 
 ## Completed milestones
 - ✅ Wieczór 1: Accounts (Clerk, Supabase, Resend, Railway)
@@ -40,7 +40,9 @@ new decisions, installed packages, or structural changes made during the session
 - ✅ Wieczór 38+39 (Session 20): RuleEngine — `server/src/RuleEngine.ts` (klasa z evaluate/loadRules/applyModRules); `server/src/defaultRules.ts` (4 reguły demo); triggery: on_tick, every_Ns (timer), on_eat, on_hunger_low (throttle 1/min), on_enemy_death; efekty: modify_stat (player/all_players), add_item (pool[] dla losowego itemu per gracz), spawn_enemy (qty+pozycja blisko gracza), broadcast_message, set_weather; `WorldState.weather` dodany do schematu; `rule_message` handler w PlayScene → EventLog; PLAN.md rozszerzony o W60 (MonsterConfig v2 + data-driven AI)
 - ✅ Wieczór 41 (Session 21): ModInput component + /forge page — `src/app/components/ModInput.tsx` (textarea 500ch, Web Speech API voice input pl-PL/en-US, language selector PL/EN, submit button); `src/app/forge/page.tsx` (auth guard, debug submit preview); W40 (visual variants) odłożony — sprite'y zostaną wygenerowane przez Pixellab
 - ✅ Wieczór 42 (Session 21): Claude API clarify — `src/app/api/forge/clarify/route.ts` (POST, Clerk auth, claude-sonnet-4-6, zwraca `{ questions: string[] }`); `forge/page.tsx` rozbudowany o flow: input → spinner → 3 pytania z inputami → "Generuj modyfikację" (W43); `@anthropic-ai/sdk` zainstalowany; `ANTHROPIC_API_KEY` w `.env.local`
-- ✅ Wieczór 43 (Session 21): Claude API generate ModConfig — `src/shared/modConfig.ts` (typy ModConfig/ModMonsterVariant/ModFoodVariant/ModRule); `src/app/api/forge/generate/route.ts` (POST, claude-sonnet-4-6, zapis do Supabase mod_configs); `src/app/api/forge/mods/route.ts` (GET lista modów usera, DELETE soft-delete); `src/app/forge/moje-mody/page.tsx` (lista modów z tagami, delete); przycisk MOJE MODY w GameHeader; system prompt z pełnymi ograniczeniami gry (baseSprite:hunter, skala 0.4–4.0, 6 efektów + RuleEngine triggers/conditions/effects); redirect gdy niemożliwa prośba (żółta ramka 💡); czytelny format reguł (formatTrigger/formatEffect); mod name/opis = faktyczna modyfikacja nie oryginalne niemożliwe żądanie
+- ✅ Wieczór 43 (Session 21): Claude API generate ModConfig
+- ✅ Cost optimization (Session 22): `/forge/clarify` → `claude-haiku-4-5-20251001` (oszczędność ~29%/miesiąc)
+- ✅ Wieczór 44 (Session 22): TestRoom + NotificationBell — `server/src/TestRoom.ts` (extends GameRoom, maxClients=3, autoDispose=false, 30min TTL, skipEventPersistence=true, _savePlayerState no-op); `server/src/index.ts` rejestruje `test_room`; GameRoom: `ruleEngine`/`masterTick`/`registerMessageHandlers` → `protected`, flaga `skipEventPersistence`; `ColyseusClient.ts` + `createTestRoom()`/`joinTestRoom()`; `PhaserGame.tsx` obsługuje `mode=test&roomId=`; `forge/page.tsx` + `moje-mody/page.tsx` — przycisk "Testuj mod", link zaproszenia, "Kopiuj"; `GameHeader.tsx` — baner TRYB TESTOWY + NotificationBell; `src/app/components/NotificationBell.tsx` (polling 30s, dropdown, klik → redirect); `api/notifications/route.ts` (GET+POST); `api/notifications/[id]/route.ts` (PATCH); Supabase tabela `notifications(id, recipient_id, type, payload, read, created_at)`
 
 ## Live URLs
 - **Colyseus game server (Railway):** `wss://gameforge-production-d7c8.up.railway.app`

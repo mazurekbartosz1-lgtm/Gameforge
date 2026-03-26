@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import NotificationBell from "../components/NotificationBell";
 
 const S = {
   display: "var(--font-display), 'Space Grotesk', sans-serif",
@@ -59,9 +60,24 @@ export default function GameHeader() {
   const isNight = stats?.isNight ?? false;
   const wt = stats?.worldTime ?? 0;
   const progress = phaseProgress(wt);
-  const roomLabel = groupName ?? (roomInfo ? `#${roomInfo.roomId.slice(0, 8).toUpperCase()}` : "—");
+  const isTestMode = searchParams.get("mode") === "test";
+  const roomLabel = isTestMode
+    ? "TRYB TESTOWY"
+    : (groupName ?? (roomInfo ? `#${roomInfo.roomId.slice(0, 8).toUpperCase()}` : "—"));
 
   return (
+    <>
+    {isTestMode && (
+      <div style={{
+        height: 28, flexShrink: 0,
+        background: "rgba(255,140,0,0.12)", borderBottom: "1px solid rgba(255,140,0,0.3)",
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+      }}>
+        <span style={{ fontSize: 11, fontFamily: S.display, color: "#FF8C00", letterSpacing: "0.1em", fontWeight: 700, textTransform: "uppercase" }}>
+          🧪 TRYB TESTOWY — modyfikacje aktywne. Nie zapisano do grupy.
+        </span>
+      </div>
+    )}
     <div style={{
       height: 44,
       flexShrink: 0,
@@ -137,8 +153,9 @@ export default function GameHeader() {
         </div>
       </div>
 
-      {/* RIGHT — historia + moje mody + leave */}
+      {/* RIGHT — historia + moje mody + dzwonek + leave */}
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+      <NotificationBell />
       <a
         href="/forge/moje-mody"
         style={{
@@ -194,5 +211,6 @@ export default function GameHeader() {
       </a>
       </div>
     </div>
+    </>
   );
 }

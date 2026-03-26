@@ -21,6 +21,8 @@ export default function ForgePage() {
   const [redirect, setRedirect] = useState<string | null>(null);
   const [modConfig, setModConfig] = useState<ModConfig | null>(null);
   const [savedModId, setSavedModId] = useState<string | null>(null);
+  const [testRoomId, setTestRoomId] = useState<string | null>(null);
+  const [creatingTestRoom, setCreatingTestRoom] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
@@ -87,6 +89,29 @@ export default function ForgePage() {
     setQuestions([]);
     setAnswers(["", "", ""]);
     setModConfig(null);
+    setTestRoomId(null);
+  }
+
+  async function handleCreateTestRoom() {
+    if (!modConfig) return;
+    setCreatingTestRoom(true);
+    try {
+      const colyseusHttp = (process.env.NEXT_PUBLIC_COLYSEUS_URL ?? "ws://localhost:2567")
+        .replace(/^wss:\/\//, "https://")
+        .replace(/^ws:\/\//, "http://");
+      const raw = await fetch(`${colyseusHttp}/matchmake/create/test_room`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ modConfig }),
+      }).then((r) => r.json());
+      if (!raw.roomId) throw new Error("No roomId returned");
+      setTestRoomId(raw.roomId as string);
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : "Unknown error");
+      setStage("error");
+    } finally {
+      setCreatingTestRoom(false);
+    }
   }
 
   const allAnswered = answers.every((a) => a.trim().length > 0);
@@ -252,6 +277,36 @@ export default function ForgePage() {
               </Section>
             )}
 
+            {/* Test room — invite link */}
+            {testRoomId && (
+              <div style={{
+                background: "rgba(0,227,100,0.07)", border: "1px solid rgba(0,227,100,0.25)",
+                borderLeft: "3px solid #00e364", borderRadius: 4, padding: "12px 14px",
+                display: "flex", flexDirection: "column", gap: 8,
+              }}>
+                <p style={{ fontSize: 11, color: "rgba(0,227,100,0.8)", margin: 0, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>
+                  {language === "pl" ? "Pokój testowy gotowy" : "Test room ready"}
+                </p>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: "monospace", wordBreak: "break-all", flex: 1 }}>
+                    {typeof window !== "undefined" ? `${window.location.origin}/game?mode=test&roomId=${testRoomId}` : ""}
+                  </span>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(`${window.location.origin}/game?mode=test&roomId=${testRoomId}`)}
+                    style={{ ...secondaryBtnStyle, padding: "6px 10px", fontSize: 11, flexShrink: 0 }}
+                  >
+                    {language === "pl" ? "Kopiuj" : "Copy"}
+                  </button>
+                </div>
+                <a
+                  href={`/game?mode=test&roomId=${testRoomId}`}
+                  style={{ ...primaryBtnStyle, textDecoration: "none", textAlign: "center", color: "#00e364", borderColor: "rgba(0,227,100,0.5)", background: "rgba(0,227,100,0.1)" }}
+                >
+                  {language === "pl" ? "Wejdź do testu →" : "Enter test →"}
+                </a>
+              </div>
+            )}
+
             {/* Buttons */}
             <div style={{ display: "flex", gap: 10, marginTop: 4, flexWrap: "wrap" }}>
               <button onClick={handleBack} style={secondaryBtnStyle}>{L.startOver}</button>
@@ -259,6 +314,17 @@ export default function ForgePage() {
                 <a href="/forge/moje-mody" style={{ ...primaryBtnStyle, textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {language === "pl" ? "Moje Mody →" : "My Mods →"}
                 </a>
+              )}
+              {!testRoomId && (
+                <button
+                  onClick={handleCreateTestRoom}
+                  disabled={creatingTestRoom}
+                  style={creatingTestRoom ? disabledBtnStyle : { ...primaryBtnStyle, borderColor: "rgba(0,227,100,0.5)", color: "#00e364", background: "rgba(0,227,100,0.1)" }}
+                >
+                  {creatingTestRoom
+                    ? (language === "pl" ? "Tworzę pokój..." : "Creating room...")
+                    : (language === "pl" ? "Testuj mod" : "Test mod")}
+                </button>
               )}
               <button
                 style={disabledBtnStyle}

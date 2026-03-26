@@ -239,7 +239,9 @@ export class GameRoom extends Room<GameRoomOptions> {
   private gameTickAccum = 0;
 
   /** Declarative rule engine — evaluates triggers and returns effects. */
-  private ruleEngine = new RuleEngine();
+  protected ruleEngine = new RuleEngine();
+  /** When true, room events are broadcast to clients but NOT written to DB (used by TestRoom). */
+  protected skipEventPersistence = false;
   /** Throttle for on_hunger_low: sessionId → last fired timestamp. */
   private hungerLowThrottle = new Map<string, number>();
 
@@ -527,11 +529,13 @@ export class GameRoom extends Room<GameRoomOptions> {
     this._updateMetadata();
   }
 
-  /** Broadcast a room event to all clients and persist to DB. */
+  /** Broadcast a room event to clients and (unless skipEventPersistence) persist to DB. */
   private broadcastRoomEvent(type: string, playerName: string, message: string) {
     const event = { id: crypto.randomUUID(), type, playerName, message, timestamp: Date.now() };
     this.broadcast("room_event", event);
-    insertRoomEvent(this.roomId, this.groupId, type, playerName, message).catch(() => {});
+    if (!this.skipEventPersistence) {
+      insertRoomEvent(this.roomId, this.groupId, type, playerName, message).catch(() => {});
+    }
   }
 
   /** Save player — routes to room state table when in a group room. */
@@ -562,7 +566,7 @@ export class GameRoom extends Room<GameRoomOptions> {
 
   // ─── Tick ──────────────────────────────────────────────────────────────────
 
-  private masterTick(dt: number) {
+  protected masterTick(dt: number) {
     // Enemy movement + separation every call (100ms)
     this.tickEnemyMovement();
     this.separateEnemies();
@@ -1102,7 +1106,7 @@ export class GameRoom extends Room<GameRoomOptions> {
 
   // ─── Message Handlers ─────────────────────────────────────────────────────
 
-  private registerMessageHandlers() {
+  protected registerMessageHandlers() {
     this.onMessage("confirm_takeover", async (client) => {
       const pending = this.pendingTakeovers.get(client.sessionId);
       if (!pending) return;

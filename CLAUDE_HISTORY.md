@@ -1157,6 +1157,39 @@ Pamiętaj: `ANTHROPIC_API_KEY` dodać na Vercel przed deplojem.
 
 ---
 
+## Session 39 — 2026-03-26 (Session 22)
+
+### What was done
+- **Cost optimization**: `/forge/clarify` → `claude-haiku-4-5-20251001` (oszczędność ~29%/miesiąc przy 100 użytkownikach; clarify jest prosty, generate pozostaje Sonnet)
+- **Wieczór 44 COMPLETE ✅** — TestRoom + NotificationBell + fundament notyfikacji
+- `server/src/GameRoom.ts` — `ruleEngine`/`masterTick`/`registerMessageHandlers` → `protected`; nowa flaga `protected skipEventPersistence = false`; `broadcastRoomEvent` sprawdza flagę przed `insertRoomEvent`
+- `server/src/TestRoom.ts` (nowy) — extends GameRoom; `maxClients=3`; `autoDispose=false`; `skipEventPersistence=true`; `_savePlayerState` no-op; auto-dispose po 30 min; rejestruje mod monster variants w `MONSTER_CONFIG` (czyszczone w `onDispose`)
+- `server/src/index.ts` — rejestracja `test_room`
+- `src/app/game/network/ColyseusClient.ts` — `createTestRoom(modConfig)` (HTTP create), `joinTestRoom(token, roomId)` (HTTP joinById + WS)
+- `src/app/game/PhaserGame.tsx` — detekcja `mode=test&roomId=` → `joinTestRoom` zamiast `connectRoom`
+- `src/app/forge/page.tsx` — przycisk "Testuj mod", stan `testRoomId`, link zaproszenia + "Kopiuj" + "Wejdź do testu"
+- `src/app/forge/moje-mody/page.tsx` — to samo per-mod: przycisk "Testuj", link, Kopiuj, Wejdź, NotificationBell w nagłówku
+- `src/app/game/GameHeader.tsx` — baner TRYB TESTOWY (pomarańczowy pasek 28px) + NotificationBell
+- `src/app/components/NotificationBell.tsx` (nowy) — polling 30s, dropdown, unread badge, klik `test_invite` → redirect, klik `mod_voted` → close
+- `src/app/api/notifications/route.ts` (nowy) — GET (lista 20 notif) + POST (utwórz)
+- `src/app/api/notifications/[id]/route.ts` (nowy) — PATCH (mark as read)
+- Supabase tabela `notifications` — do ręcznego wykonania SQL
+
+### Decisions made
+- TestRoom jest w pełni efemeryczny: zero zapisów do DB (no-op _savePlayerState + skipEventPersistence)
+- `autoDispose=false` — pokój testowy żyje 30 min nawet gdy 0 klientów (twórca może się połączyć po czasie)
+- NotificationBell używa pollingu (30s) zamiast Supabase Realtime — unika konieczności NEXT_PUBLIC_SUPABASE_ANON_KEY i konfiguracji RLS dla Clerk
+- mod_variant IDs prefixowane `mod_` aby nie kolidowały z MONSTER_CONFIG entries; czyszczone w onDispose
+- Haiku dla clarify: zadanie proste (3 pytania), wystarczy Haiku; generate zostaje Sonnet (złożony JSON schema)
+
+### Problems encountered
+- Brak — kompilacja czysta po obu stronach
+
+### Next step
+**Wieczór 45** — Submit mod to group vote + player picker (zapraszanie graczy z grupy do testu) + mod_voted notifications.
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

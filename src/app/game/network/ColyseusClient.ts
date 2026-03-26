@@ -89,3 +89,30 @@ export async function connectRoom(token?: string, nickname?: string, groupId?: s
 export function getRoom(): Room | null {
   return room;
 }
+
+/** Create a test_room on Colyseus with modConfig applied — returns roomId (HTTP only, no WS). */
+export async function createTestRoom(modConfig: unknown): Promise<string> {
+  const raw = await fetch(`${httpUrl}/matchmake/create/test_room`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ modConfig }),
+  }).then((r) => r.json());
+  if (!raw.roomId) throw new Error(raw.error ?? "Failed to create test room");
+  return raw.roomId as string;
+}
+
+/** Join an existing test_room by roomId (used by invited players). */
+export async function joinTestRoom(token: string | undefined, roomId: string): Promise<Room> {
+  const raw = await fetch(`${httpUrl}/matchmake/joinById/${roomId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ token }),
+  }).then((r) => r.json());
+  const response = {
+    room: { name: raw.name, roomId: raw.roomId, processId: raw.processId },
+    sessionId: raw.sessionId,
+  };
+  room = await client.consumeSeatReservation(response);
+  console.log("Colyseus test_room joined, sessionId:", room!.sessionId);
+  return room as Room;
+}
