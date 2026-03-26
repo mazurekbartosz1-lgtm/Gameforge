@@ -246,6 +246,28 @@ export async function submitModToGroup(
   }
 }
 
+// ─── Approved mods ───────────────────────────────────────────────────────────
+
+export interface ApprovedMod {
+  id: string;
+  config: Record<string, any>;
+}
+
+export async function loadApprovedMods(groupId: string): Promise<ApprovedMod[]> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("mod_configs")
+      .select("id, config")
+      .eq("group_id", groupId)
+      .eq("status", "approved");
+    if (error) { console.warn("[DB] loadApprovedMods error:", error.message); return []; }
+    return (data ?? []) as ApprovedMod[];
+  } catch (err) {
+    console.warn("[DB] loadApprovedMods exception:", err);
+    return [];
+  }
+}
+
 export async function deletePlayer(userId: string): Promise<void> {
   try {
     const { error } = await supabaseAdmin

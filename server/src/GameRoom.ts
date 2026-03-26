@@ -1,7 +1,7 @@
 import { Room, Client, type RoomOptions } from "@colyseus/core";
 import { Schema, MapSchema, ArraySchema, type } from "@colyseus/schema";
 import { verifyToken } from "@clerk/backend";
-import { loadPlayer, savePlayer, deletePlayer, loadWorldSeed, saveWorldSeed, loadDeadResources, saveDeadResources, loadRoomState, saveRoomState, insertRoomEvent, submitModToGroup } from "./db.js";
+import { loadPlayer, savePlayer, deletePlayer, loadWorldSeed, saveWorldSeed, loadDeadResources, saveDeadResources, loadRoomState, saveRoomState, insertRoomEvent, submitModToGroup, loadApprovedMods } from "./db.js";
 import { FOOD_CONFIG } from "./foodConfig.js";
 import { LOOT_TABLE, rollDrop, getLootItem } from "./lootConfig.js";
 import { MONSTER_CONFIG } from "./monsterConfig.js";
@@ -242,6 +242,8 @@ export class GameRoom extends Room<GameRoomOptions> {
   protected ruleEngine = new RuleEngine();
   /** When true, room events are broadcast to clients but NOT written to DB (used by TestRoom). */
   protected skipEventPersistence = false;
+  /** IDs of approved mods already loaded into this room instance. */
+  private loadedModIds = new Set<string>();
   /** Throttle for on_hunger_low: sessionId → last fired timestamp. */
   private hungerLowThrottle = new Map<string, number>();
 
@@ -287,7 +289,50 @@ export class GameRoom extends Room<GameRoomOptions> {
       await Promise.allSettled(saves);
     }, 30_000);
     this.ruleEngine.loadRules(DEFAULT_RULES);
+
+    // Load all approved mods for this group
+    if (this.groupId) {
+      const approved = await loadApprovedMods(this.groupId);
+      for (const mod of approved) this.applyMod(mod.id, mod.config);
+      // Poll for newly approved mods every 60s
+      this.clock.setInterval(async () => {
+        const latest = await loadApprovedMods(this.groupId!);
+        for (const mod of latest) {
+          if (!this.loadedModIds.has(mod.id)) this.applyMod(mod.id, mod.config);
+        }
+      }, 60_000);
+    }
+
     console.log(`[GameRoom] created – roomId: ${this.roomId}, seed: ${state.mapSeed}`);
+  }
+
+  /** Register a mod's monster variants and rules into the live room. */
+  protected applyMod(modId: string, config: Record<string, any>): void {
+    if (this.loadedModIds.has(modId)) return;
+    this.loadedModIds.add(modId);
+
+    const variants: any[] = config.monsterVariants ?? [];
+    for (const v of variants) {
+      const configId = `mod_${v.id}`;
+      MONSTER_CONFIG[configId] = {
+        id: configId,
+        name: v.name,
+        baseSprite: v.baseSprite ?? "hunter",
+        tint: v.tint ?? 0xffffff,
+        scale: v.scale ?? 1.0,
+        hp: v.hp,
+        maxHp: v.maxHp ?? v.hp,
+        damage: v.damage,
+        particleEffect: v.particleEffect,
+        dropTable: v.dropTable ?? [],
+      };
+    }
+
+    const rules: any[] = config.rules ?? [];
+    if (rules.length > 0) this.ruleEngine.addRules(rules);
+
+    console.log(`[GameRoom] Applied mod ${modId} — variants: ${variants.length}, rules: ${rules.length}`);
+    this.broadcast("mod_activated", { modId, name: config.name ?? modId });
   }
 
   async onJoin(client: Client, options: { token?: string; nickname?: string }) {

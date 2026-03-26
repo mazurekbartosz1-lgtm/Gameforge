@@ -75,6 +75,17 @@ export class RuleEngine {
     }
   }
 
+  /** Append rules to existing set (used when applying approved mods to a live room). */
+  addRules(rules: Rule[]): void {
+    const now = Date.now()
+    for (const rule of rules) {
+      if (rule.trigger === 'every_Ns' && rule.intervalMs) {
+        rule._nextFireAt = now + rule.intervalMs
+      }
+      this.rules.push(rule)
+    }
+  }
+
   /** Replace active rules — called by AI mod pipeline (Wieczór 47). */
   applyModRules(rules: Rule[]): void {
     this.loadRules(rules)
