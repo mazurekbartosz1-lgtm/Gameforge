@@ -1311,6 +1311,34 @@ Pamiętaj: `ANTHROPIC_API_KEY` dodać na Vercel przed deplojem.
 
 ---
 
+## Session 44 — 2026-03-26 (Session 25)
+
+### What was done
+- **Press Start 2P pixel font globalnie** — dodany do `src/app/layout.tsx` jako `--font-pixel` CSS variable (font: `Press_Start_2P`, weight: 400, subsets: latin, display: swap)
+- **Pixel font na wszystkich stronach**: `/` (h1 GAMEFORGE), `/forge` (h1 + h2), `/forge/moje-mody` (h1), `/forge/glosowanie` (h1), `/forge/vote/[modId]` (h1), `/status` (h1 SYSTEM STATUS), `/room-history` (h1 Room History)
+- **GameHeader.tsx** — pixel font na: "POKÓJ" label (6px), room name span (9px), player count number (9px), day/night "NOC/DZIEŃ N" label (9px), MOJE MODY button (8px), HISTORIA button (8px), "← OPUŚĆ POKÓJ" button (8px); usunięty fontWeight (pixel font nie ma wariantów wagi)
+- **PlayerPanel.tsx** — pixel font na: `SectionLabel` (7px), `StatBar` label i wartość (7px), `CombatTile` label (7px) i wartość (13px), `displayName` (9px, maxWidth 130), SIGN IN button (8px), X/Y coordinates (6px)
+- **Middleware** — `src/middleware.ts` (nowy): Clerk middleware; PUBLIC_PATHS = ["/devlog", "/api/waitlist"]; niezalogowani → redirect /devlog; zalogowani → przechodzą; Clerk Dashboard → Restrictions → Sign-up = Restricted (bez rejestracji)
+- **Devlog zaktualizowany** — nowy wpis "Pixel font everywhere — the HUD finally looks like a game"; DONE_TASKS: 41 → 42
+
+### Decisions made
+- Press Start 2P renderuje ~2× szerzej niż sans-serif — wszystkie rozmiary zmniejszone: h1 22px→13px, wartości stats 16px→13px, labele 8px→7px
+- Pixel font działa w client component przez `next/font/google` (działa na poziomie modułu, build-time CSS)
+- Middleware działa wyłącznie dla niezalogowanych — zalogowani mają pełny dostęp do wszystkich stron; brak UI rejestracji po stronie Clerka eliminuje przypadkowe sign-upy
+
+### Problems encountered
+- Press Start 2P 2× szerzej od sans-serif — rozmiary musiały być znacznie zmniejszone vs pierwsza próba
+
+### Next step
+**Task 46** — Pełny system głosowania:
+- Supabase tabela `votes(id, mod_id, player_id, created_at)` z UNIQUE(mod_id, player_id)
+- `POST /api/forge/vote`: Clerk auth, max 3 głosy/tydzień na gracza, upsert vote, próg (np. 3 głosy) → status `approved`
+- `GET /api/forge/vote/[modId]`: czy bieżący user głosował
+- `forge/vote/[modId]`: aktywny przycisk ❤ Zagłosuj, licznik głosów
+- Notyfikacja `mod_voted` dla autora moda
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,
