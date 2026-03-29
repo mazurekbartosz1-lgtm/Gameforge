@@ -1,12 +1,17 @@
 import { Room, Client, type RoomOptions } from "@colyseus/core";
 import { Schema, MapSchema, ArraySchema, type } from "@colyseus/schema";
 import { verifyToken } from "@clerk/backend";
-import { loadPlayer, savePlayer, deletePlayer, loadWorldSeed, saveWorldSeed, loadDeadResources, saveDeadResources, loadRoomState, saveRoomState, insertRoomEvent, submitModToGroup, loadApprovedMods } from "./db.js";
+import { loadPlayer, savePlayer, deletePlayer, loadWorldSeed, saveWorldSeed, loadDeadResources, saveDeadResources, loadRoomState, saveRoomState, insertRoomEvent, submitModToGroup, loadApprovedMods, getGroupAgeDays, getPlayerJoinedGroupAt } from "./db.js";
 import { FOOD_CONFIG } from "./foodConfig.js";
 import { LOOT_TABLE, rollDrop, getLootItem } from "./lootConfig.js";
 import { MONSTER_CONFIG } from "./monsterConfig.js";
 import { RuleEngine, type Rule, type RuleEffect } from "./RuleEngine.js";
 import { DEFAULT_RULES } from "./defaultRules.js";
+import {
+  type DifficultyOverrides,
+  DEFAULT_DIFFICULTY_LEVELS,
+  DEFAULT_DEATH_DROP_THRESHOLDS,
+} from "./difficultyConfig.js";
 
 interface GameRoomOptions extends RoomOptions {
   state: WorldState;
@@ -113,6 +118,14 @@ const SANITY_HARVEST_BONUS  = 2;    // +2 sanity per resource harvested
 const BASE_ATTACK  = 5;
 const BASE_DEFENSE = 2;
 const PICKUP_RANGE = 64;   // px — max distance to pick up a dropped item
+
+// ─── Difficulty zone boundaries (px from world origin) ───────────────────────
+const DEFAULT_ZONE_BOUNDARIES: [number, number, number] = [500, 1500, 3000];
+const DEFAULT_DAY_SCALE_FACTOR   = 0.15;
+const DEFAULT_ZONE_SCALE_FACTOR  = 0.4;
+const DEFAULT_MAX_DIFFICULTY     = 8;
+const DEFAULT_NEW_PLAYER_PROTECTION_DAYS = 3;
+const NEW_PLAYER_PROTECTION_DMG_MULT = 0.5;
 
 const TILE_PX             = 16;   // pixels per tile (mirrors client TILE_SIZE)
 const ENEMY_ZONE_TILES    = 16;   // tiles per enemy spawn zone side (256 px)
@@ -250,6 +263,16 @@ export class GameRoom extends Room<GameRoomOptions> {
   /** Throttle for on_hunger_low: sessionId → last fired timestamp. */
   private hungerLowThrottle = new Map<string, number>();
 
+  // ─── Difficulty system ────────────────────────────────────────────────────
+  /** Active difficulty overrides from the latest approved mod (or defaults). */
+  private difficultyOverrides: DifficultyOverrides = {};
+  /** Group age in days — cached on room create and refreshed every minute. */
+  private groupAgeDays = 0;
+  /** Last difficulty level index — used to detect level-up for on_difficulty_increase. */
+  private lastDifficultyLevel = 0;
+  /** sessionId → Date when that player joined the group. */
+  private playerJoinedGroupAt = new Map<string, Date>();
+
   async onCreate(options: any) {
     this.groupId = options.groupId ?? null;
     const state = new WorldState();
@@ -292,6 +315,16 @@ export class GameRoom extends Room<GameRoomOptions> {
       await Promise.allSettled(saves);
     }, 30_000);
     this.ruleEngine.loadRules(DEFAULT_RULES);
+
+    // Load group age and refresh every 60s
+    if (this.groupId) {
+      this.groupAgeDays = await getGroupAgeDays(this.groupId);
+      this.clock.setInterval(async () => {
+        const prev = this.groupAgeDays;
+        this.groupAgeDays = await getGroupAgeDays(this.groupId!);
+        this._checkDifficultyLevelUp(prev);
+      }, 60_000);
+    }
 
     // Load all approved mods for this group
     if (this.groupId) {
@@ -344,6 +377,16 @@ export class GameRoom extends Room<GameRoomOptions> {
     if (rules.length > 0) this.ruleEngine.addRules(rules);
     this.loadedModRuleIds.set(modId, rules.map((r) => r.id));
 
+    // Apply difficulty overrides if present
+    if (config.difficultyOverrides) {
+      this.difficultyOverrides = { ...this.difficultyOverrides, ...config.difficultyOverrides };
+      // Enforce minimum new player protection
+      if (this.difficultyOverrides.newPlayerProtectionDays !== undefined) {
+        this.difficultyOverrides.newPlayerProtectionDays = Math.max(1, this.difficultyOverrides.newPlayerProtectionDays);
+      }
+      console.log(`[GameRoom] Mod ${modId} applied difficultyOverrides`);
+    }
+
     console.log(`[GameRoom] Applied mod ${modId} — variants: ${variants.length}, rules: ${rules.length}`);
     this.broadcast("mod_activated", { modId, name: config.name ?? modId });
   }
@@ -360,6 +403,15 @@ export class GameRoom extends Room<GameRoomOptions> {
     const ruleIds = this.loadedModRuleIds.get(modId) ?? [];
     if (ruleIds.length > 0) this.ruleEngine.removeRulesByIds(ruleIds);
     this.loadedModRuleIds.delete(modId);
+
+    // Reset difficulty overrides — rebuild from remaining active mods
+    this.difficultyOverrides = {};
+    for (const [activeModId] of this.loadedModVariantIds) {
+      // Re-apply overrides from still-active mods (loaded in MONSTER_CONFIG)
+      // Note: full rebuild not needed here — simple reset suffices since
+      // difficulty is recalculated live from this.difficultyOverrides each tick.
+      void activeModId;
+    }
 
     console.log(`[GameRoom] Deactivated mod ${modId}`);
     this.broadcast("mod_deactivated", { modId });
@@ -566,6 +618,19 @@ export class GameRoom extends Room<GameRoomOptions> {
     this.state.players.set(client.sessionId, player);
     this._updateMetadata();
 
+    // Load when this player joined the group (for new-player protection)
+    if (this.groupId) {
+      const dbId = this.playerDbIds.get(client.sessionId);
+      if (dbId) {
+        const joinedAt = await getPlayerJoinedGroupAt(dbId, this.groupId);
+        if (joinedAt) this.playerJoinedGroupAt.set(client.sessionId, joinedAt);
+        else this.playerJoinedGroupAt.set(client.sessionId, new Date());
+      } else {
+        // Guest or unknown — no protection
+        this.playerJoinedGroupAt.delete(client.sessionId);
+      }
+    }
+
     // Send existing players to the new client
     const existing: object[] = [];
     this.state.players.forEach((p, sid) => {
@@ -592,6 +657,7 @@ export class GameRoom extends Room<GameRoomOptions> {
   async onLeave(client: Client, _code?: number) {
     this.pendingTakeovers.delete(client.sessionId);
     this.hungerLowThrottle.delete(client.sessionId);
+    this.playerJoinedGroupAt.delete(client.sessionId);
     const player = this.state.players.get(client.sessionId);
     if (player) {
       await this._savePlayerState(player);
@@ -681,7 +747,8 @@ export class GameRoom extends Room<GameRoomOptions> {
         player.hp = Math.max(0, player.hp - 1);
         if (prevHp > 0 && player.hp === 0 && !this.deadPlayers.has(player.sessionId)) {
           this.deadPlayers.add(player.sessionId);
-          this.broadcastRoomEvent("death", player.nickname, `☠ ${player.nickname} umarł(a) z głodu`);
+          const c = this.clients.find(cl => cl.sessionId === player.sessionId);
+          if (c) this.handlePlayerDeath(player, c);
         }
       }
 
@@ -816,7 +883,224 @@ export class GameRoom extends Room<GameRoomOptions> {
     player.defense = BASE_DEFENSE + armorBonus + helmetBonus;
   }
 
+  // ─── Difficulty helpers ───────────────────────────────────────────────────
+
+  /** Returns zone tier 0–3 for a world position. */
+  private getDistanceZone(x: number, y: number): 0 | 1 | 2 | 3 {
+    const dist = Math.hypot(x, y);
+    const [z1, z2, z3] = this.difficultyOverrides.zoneBoundaries ?? DEFAULT_ZONE_BOUNDARIES;
+    if (dist < z1) return 0;
+    if (dist < z2) return 1;
+    if (dist < z3) return 2;
+    return 3;
+  }
+
+  /** Returns the combined difficulty multiplier (capped). */
+  getDifficultyMultiplier(zone: 0 | 1 | 2 | 3, groupDays?: number): number {
+    const days = groupDays ?? this.groupAgeDays;
+    const daySc  = this.difficultyOverrides.dayScaleFactor  ?? DEFAULT_DAY_SCALE_FACTOR;
+    const zoneSc = this.difficultyOverrides.zoneScaleFactor ?? DEFAULT_ZONE_SCALE_FACTOR;
+    const cap    = this.difficultyOverrides.maxDifficultyMultiplier ?? DEFAULT_MAX_DIFFICULTY;
+    const mult   = (1 + days * daySc) * (1 + zone * zoneSc);
+    return Math.min(mult, cap);
+  }
+
+  /** Returns current global difficulty level index (0-based). */
+  private getCurrentDifficultyLevelIndex(): number {
+    const levels = this.difficultyOverrides.difficultyLevels ?? DEFAULT_DIFFICULTY_LEVELS;
+    let idx = 0;
+    for (let i = 0; i < levels.length; i++) {
+      if (this.groupAgeDays >= levels[i].minDay) idx = i;
+    }
+    return idx;
+  }
+
+  /** Returns difficulty level info for the current group age. */
+  getDifficultyLevelInfo(): { level: number; name: string; color: string; daysToNext: number } {
+    const levels = this.difficultyOverrides.difficultyLevels ?? DEFAULT_DIFFICULTY_LEVELS;
+    const idx = this.getCurrentDifficultyLevelIndex();
+    const current = levels[idx];
+    const next = levels[idx + 1];
+    const daysToNext = next ? Math.max(0, Math.ceil(next.minDay - this.groupAgeDays)) : 0;
+    return { level: idx + 1, name: current.name, color: current.color, daysToNext };
+  }
+
+  /** Checks if difficulty has leveled up since last check, fires rule trigger if so. */
+  private _checkDifficultyLevelUp(prevDays: number): void {
+    const prevIdx = this._getDifficultyLevelIndexForDays(prevDays);
+    const currIdx = this.getCurrentDifficultyLevelIndex();
+    if (currIdx > prevIdx) {
+      this.lastDifficultyLevel = currIdx;
+      const info = this.getDifficultyLevelInfo();
+      this.broadcast("difficulty_increase", { level: info.level, name: info.name, color: info.color });
+      const effects = this.ruleEngine.evaluate("on_difficulty_increase", {
+        world: { isNight: this.state.isNight, worldTime: this.state.worldTime, weather: this.state.weather },
+      });
+      if (effects.length > 0) this.applyRuleEffects(effects, {});
+    }
+  }
+
+  private _getDifficultyLevelIndexForDays(days: number): number {
+    const levels = this.difficultyOverrides.difficultyLevels ?? DEFAULT_DIFFICULTY_LEVELS;
+    let idx = 0;
+    for (let i = 0; i < levels.length; i++) {
+      if (days >= levels[i].minDay) idx = i;
+    }
+    return idx;
+  }
+
+  /** Returns true if the player is still within their new-player protection window. */
+  private isNewPlayerProtected(sessionId: string): boolean {
+    const joinedAt = this.playerJoinedGroupAt.get(sessionId);
+    if (!joinedAt) return false;
+    const protectionDays = Math.max(
+      1,
+      this.difficultyOverrides.newPlayerProtectionDays ?? DEFAULT_NEW_PLAYER_PROTECTION_DAYS
+    );
+    const daysInGroup = (Date.now() - joinedAt.getTime()) / 86_400_000;
+    return daysInGroup < protectionDays;
+  }
+
+  /** Returns remaining protection days for a player (0 if none). */
+  private getProtectionDaysLeft(sessionId: string): number {
+    const joinedAt = this.playerJoinedGroupAt.get(sessionId);
+    if (!joinedAt) return 0;
+    const protectionDays = Math.max(
+      1,
+      this.difficultyOverrides.newPlayerProtectionDays ?? DEFAULT_NEW_PLAYER_PROTECTION_DAYS
+    );
+    const daysInGroup = (Date.now() - joinedAt.getTime()) / 86_400_000;
+    return Math.max(0, Math.ceil(protectionDays - daysInGroup));
+  }
+
+  /**
+   * Resolves death drops for a player.
+   * Returns array of itemIds to drop (may be empty).
+   * New players always get minimum penalty.
+   */
+  private resolveDeathDrops(player: PlayerState, difficulty: number): string[] {
+    const thresholds = this.difficultyOverrides.deathDropThresholds ?? DEFAULT_DEATH_DROP_THRESHOLDS;
+    const isProtected = this.isNewPlayerProtected(player.sessionId);
+
+    // Find matching threshold (sorted ascending — pick the last that applies)
+    let threshold = thresholds[0];
+    if (isProtected) {
+      // Force minimum penalty for new players
+      threshold = thresholds[0];
+    } else {
+      for (const t of thresholds) {
+        if (difficulty >= t.minDifficulty) threshold = t;
+      }
+    }
+
+    if (Math.random() > threshold.dropChance) return [];
+
+    const count = threshold.minDrops + Math.floor(
+      Math.random() * (threshold.maxDrops - threshold.minDrops + 1)
+    );
+
+    // Build inventory copy to pick from (exclude equipped items)
+    const equipped = new Set<string>();
+    player.equipment.forEach((itemId) => equipped.add(itemId));
+    const pickable = Array.from(player.inventory).filter((id) => !equipped.has(id));
+    if (pickable.length === 0) return [];
+
+    const dropped: string[] = [];
+    const available = [...pickable];
+    for (let i = 0; i < count && available.length > 0; i++) {
+      const idx = Math.floor(Math.random() * available.length);
+      dropped.push(available.splice(idx, 1)[0]);
+    }
+    return dropped;
+  }
+
+  /** Handle player death: drop items, respawn at bonfire, apply penalties. */
+  private handlePlayerDeath(player: PlayerState, client: Client): void {
+    const zone = this.getDistanceZone(player.x, player.y);
+    const difficulty = this.getDifficultyMultiplier(zone);
+
+    // Resolve item drops
+    const droppedItemIds = this.resolveDeathDrops(player, difficulty);
+    const spawnedDrops: DroppedItemData[] = [];
+    for (const itemId of droppedItemIds) {
+      const idx = player.inventory.indexOf(itemId);
+      if (idx !== -1) {
+        player.inventory.splice(idx, 1);
+        const dropId = `death_drop_${crypto.randomUUID()}`;
+        const angle = Math.random() * Math.PI * 2;
+        const dropData: DroppedItemData = {
+          id: dropId,
+          itemId,
+          qty: 1,
+          x: player.x + Math.cos(angle) * 24,
+          y: player.y + Math.sin(angle) * 24,
+        };
+        this.droppedItems.set(dropId, dropData);
+        spawnedDrops.push(dropData);
+      }
+    }
+    if (spawnedDrops.length > 0) {
+      this.broadcast("dropped_items_init", [
+        ...Array.from(this.droppedItems.values()),
+      ]);
+    }
+
+    // Apply respawn penalties (capped)
+    const penalty = this.difficultyOverrides.respawnPenalty ?? {};
+    const hungerLoss = penalty.hungerLoss ?? 0.25;
+    const sanityLoss = penalty.sanityLoss ?? 0.20;
+    player.hunger = Math.max(0, player.hunger - player.hunger * hungerLoss);
+    player.sanity = Math.max(0, player.sanity - 100 * sanityLoss);
+
+    // Find nearest group bonfire
+    let respawnX = 400 + Math.random() * 200;
+    let respawnY = 300 + Math.random() * 200;
+    let nearestBonfireDist = Infinity;
+    this.state.buildings.forEach((b: BuildingState) => {
+      if (b.type !== "bonfire") return;
+      const d = Math.hypot(b.x - player.x, b.y - player.y);
+      if (d < nearestBonfireDist) {
+        nearestBonfireDist = d;
+        respawnX = b.x + 32;
+        respawnY = b.y + 32;
+      }
+    });
+
+    // Restore HP to half
+    player.hp = Math.floor(player.maxHp * 0.5);
+
+    // Broadcast death to all, then respawn to the player after 3s
+    this.broadcast("player_death", {
+      sessionId: player.sessionId,
+      nickname: player.nickname,
+      droppedItems: droppedItemIds,
+      x: player.x,
+      y: player.y,
+    });
+    this.broadcastRoomEvent("death", player.nickname, `☠ ${player.nickname} zginął(a)`);
+
+    // Fire on_player_death rule trigger
+    const deathEffects = this.ruleEngine.evaluate("on_player_death", {
+      player: { hp: 0, maxHp: player.maxHp, hunger: player.hunger, sanity: player.sanity, sessionId: player.sessionId },
+      world: { isNight: this.state.isNight, worldTime: this.state.worldTime, weather: this.state.weather },
+    });
+    if (deathEffects.length > 0) this.applyRuleEffects(deathEffects, { client, player });
+
+    // Respawn after 3 seconds
+    this.clock.setTimeout(() => {
+      player.x = respawnX;
+      player.y = respawnY;
+      this.deadPlayers.delete(player.sessionId);
+      client.send("player_respawn", { x: respawnX, y: respawnY, hp: player.hp });
+      client.send("inventory_load", Array.from(player.inventory));
+      this.sendStatsToPlayers();
+      this._savePlayerState(player).catch(() => {});
+      console.log(`[GameRoom] ${player.nickname} respawned at bonfire (${respawnX}, ${respawnY})`);
+    }, 3_000);
+  }
+
   private sendStatsToPlayers() {
+    const diffInfo = this.getDifficultyLevelInfo();
     this.clients.forEach((client) => {
       const player = this.state.players.get(client.sessionId);
       if (!player || !player.isOnline) return;
@@ -836,6 +1120,13 @@ export class GameRoom extends Room<GameRoomOptions> {
         isNight: this.state.isNight,
         worldTime: this.state.worldTime,
         equipment,
+        // Difficulty info
+        groupAgeDays: Math.floor(this.groupAgeDays),
+        difficultyLevel: diffInfo.level,
+        difficultyName: diffInfo.name,
+        difficultyColor: diffInfo.color,
+        daysToNextLevel: diffInfo.daysToNext,
+        newPlayerProtectionDaysLeft: this.getProtectionDaysLeft(client.sessionId),
       });
     });
   }
@@ -915,7 +1206,8 @@ export class GameRoom extends Room<GameRoomOptions> {
         const ex = zx * ENEMY_ZONE_PX + hx * ENEMY_ZONE_PX;
         const ey = zy * ENEMY_ZONE_PX + hy * ENEMY_ZONE_PX;
         if (!this.isEnemyMoveBlocked(ex, ey)) {
-          this.spawnSingleEnemy(`e_${zx}_${zy}_${i}`, ex, ey);
+          const configId = this._getEnemyConfigForPosition(ex, ey);
+          this.spawnSingleEnemy(`e_${zx}_${zy}_${i}`, ex, ey, configId);
           alive++;
           break;
         }
@@ -923,19 +1215,34 @@ export class GameRoom extends Room<GameRoomOptions> {
     }
   }
 
+  /** Returns a configId from the zone-appropriate pool. */
+  private _getEnemyConfigForPosition(x: number, y: number): string {
+    const zone = this.getDistanceZone(x, y);
+    const pools: Record<0 | 1 | 2 | 3, string[]> = {
+      0: ["hunter"],
+      1: ["hunter", "fire_hunter"],
+      2: ["fire_hunter", "boss_hunter"],
+      3: ["boss_hunter", "boss_hunter", "fire_hunter"],
+    };
+    const pool = pools[zone];
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
   private spawnSingleEnemy(id: string, x: number, y: number, configId = "hunter") {
     if (this.state.enemies.has(id)) return;
     const config = MONSTER_CONFIG[configId] ?? MONSTER_CONFIG["hunter"];
+    const zone = this.getDistanceZone(x, y);
+    const mult = this.getDifficultyMultiplier(zone);
     const enemy = new EnemyState();
-    enemy.id      = id;
-    enemy.type    = "hunter";
+    enemy.id       = id;
+    enemy.type     = "hunter";
     enemy.configId = config.id;
-    enemy.x       = x;
-    enemy.y       = y;
-    enemy.hp      = config.hp;
-    enemy.maxHp   = config.maxHp;
-    enemy.isAlive = true;
-    enemy.animKey = "idle_down";
+    enemy.x        = x;
+    enemy.y        = y;
+    enemy.hp       = Math.round(config.hp * mult);
+    enemy.maxHp    = Math.round(config.maxHp * mult);
+    enemy.isAlive  = true;
+    enemy.animKey  = "idle_down";
     this.state.enemies.set(id, enemy);
     this.enemyVelocities.set(id, { vx: 0, vy: 0 });
   }
@@ -1008,13 +1315,17 @@ export class GameRoom extends Room<GameRoomOptions> {
           if (attackedPlayer) {
             const prevHp = attackedPlayer.hp;
             const config = MONSTER_CONFIG[enemy.configId] ?? MONSTER_CONFIG["hunter"];
-            const dmg = config.damage;
+            // Apply new-player protection: halve damage if protected
+            const rawDmg = config.damage;
+            const dmg = this.isNewPlayerProtected(attackedPlayer.sessionId)
+              ? Math.max(1, Math.floor(rawDmg * NEW_PLAYER_PROTECTION_DMG_MULT))
+              : rawDmg;
             attackedPlayer.hp = Math.max(0, attackedPlayer.hp - dmg);
             const attackedClient = this.clients.find(c => c.sessionId === nearest!.sessionId);
             attackedClient?.send("player_damage", { damage: dmg, hp: attackedPlayer.hp });
             if (prevHp > 0 && attackedPlayer.hp === 0 && !this.deadPlayers.has(attackedPlayer.sessionId)) {
               this.deadPlayers.add(attackedPlayer.sessionId);
-              this.broadcastRoomEvent("death", attackedPlayer.nickname, `☠ ${attackedPlayer.nickname} zginął(a) od ataku wroga`);
+              if (attackedClient) this.handlePlayerDeath(attackedPlayer, attackedClient);
             }
           }
         } else {

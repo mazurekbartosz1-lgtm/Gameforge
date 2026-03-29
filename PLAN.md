@@ -1381,7 +1381,7 @@ Confirm when done and show me what was created.
 
 ## TYDZIEŃ 9 — Voting and launch
 
-### [ ] Wieczór 46: Voting system
+### [x] Wieczór 46: Voting system
 
 ```
 Implement the full voting system with max 3 hearts per week and hidden results.
@@ -1458,6 +1458,54 @@ Create src/app/api/forge/apply/route.ts (Next.js → calls the Colyseus HTTP end
 
 Confirm when done and show me what was created.
 ```
+
+---
+
+### [x] T-COMBAT: Hybrid difficulty scaling + death/respawn system
+DONE (Session 46 — 2026-03-29) — Pełny system walki: hybrydowe skalowanie trudności, śmierć/odrodzenie gracza, ochrona nowego gracza, strefy wrogów, moddowalna trudność.
+
+**System trudności (hybrydowy):**
+- Formuła: `(1 + groupDays × dayScaleFactor) × (1 + distanceZone × zoneScaleFactor)`, capped at maxDifficultyMultiplier (domyślnie 8×)
+- 4 strefy na podstawie odległości od originu: [0–500px, 500–1500px, 1500–3000px, 3000px+]
+- Poziomy trudności: Spokojnie / Niebezpiecznie / Groźnie / Śmiertelnie z kolorami
+- `DifficultyBadge` w GameHeader: nazwa poziomu + pasek postępu do następnego
+- GroupAgeDays ładowany przy onCreate, refresh co 60s z wykrywaniem level-up
+
+**Śmierć i odrodzenie:**
+- Model knockout: gracz upada (hp=0), ekran śmierci z 3s odliczaniem
+- Upuszcza losowe przedmioty (NIE sprzęt) skalowane z poziomem trudności
+- Odrodzenie przy najbliższym ognisku lub (0,0), z hp=50% maxHp
+- Kara: -25% hunger, -20% sanity (konfigurowalnie)
+- Broadcasty: `player_death`, `player_respawn` do wszystkich graczy w pokoju
+
+**Ochrona nowego gracza:**
+- Domyślnie 3 dni ochrony od dołączenia do grupy
+- 50% redukcja obrażeń od wrogów przez ten okres
+- Minimalna kara przy śmierci chronionych graczy
+- Badge 🛡️ Ochrona w PlayerPanel z liczbą dni
+
+**Strefy wrogów:**
+- Strefa 0: tylko hunter; Strefa 1: hunter + fire_hunter; Strefa 2: fire_hunter + boss_hunter; Strefa 3: boss_hunter×2 + fire_hunter
+- Bez nowych sprite'ów — Pixellab później; tint/scale/particles tworzą różnorodność wizualną
+- Supabase: `ALTER TABLE group_members ADD COLUMN IF NOT EXISTS joined_at TIMESTAMPTZ NOT NULL DEFAULT now()`
+
+**DifficultyOverrides (moddowalne):**
+- Pola: dayScaleFactor, zoneScaleFactor, zoneBoundaries, maxDifficultyMultiplier, deathDropThresholds, respawnPenalty, difficultyLevels, newPlayerProtectionDays
+- Zintegrowane z ModConfig — AI Forge może generować mody zmieniające mechaniki trudności
+
+**Nowe pliki:**
+- `server/src/difficultyConfig.ts` — mirror typów DifficultyOverrides dla serwera (tsconfig rootDir constraint)
+- `docs/DESIGN_PROPOSALS.md` — propozycje T-COMBAT i T-GOALS z alternatywami
+
+**Zaktualizowane pliki:**
+- `src/shared/modConfig.ts` — DifficultyOverrides, DifficultyLevel, DEFAULT_DIFFICULTY_LEVELS, DEFAULT_DEATH_DROP_THRESHOLDS, rozszerzony trigger union
+- `server/src/RuleEngine.ts` — nowe triggery: on_difficulty_increase, on_player_death, on_zone_enter; nowy efekt: modify_difficulty
+- `server/src/GameRoom.ts` — pełna implementacja difficulty + death/respawn + zone spawning
+- `server/src/db.ts` — getGroupAgeDays(), getPlayerJoinedGroupAt()
+- `src/app/game/GameHeader.tsx` — DifficultyBadge z level name + progress bar
+- `src/app/game/PlayerPanel.tsx` — badge ochrony nowego gracza
+- `src/app/game/scenes/PlayScene.ts` — death overlay, zone toast, _checkZoneTransition()
+- `src/app/api/forge/generate/route.ts` — rozszerzony SYSTEM_PROMPT o DifficultyOverrides
 
 ---
 
@@ -1997,4 +2045,228 @@ Confirm when done and show me what was created.
 
 ---
 
-*End of plan. Total: 60 evenings across 10 weeks.*
+### [ ] Wieczór 61: Pixellab sprite generation — player character (walk + death, 8 directions)
+
+```
+Generate custom pixel art player sprites using the Pixellab API to replace the
+current Body_A sprite sheet from Pixel Crawler.
+
+Read these files first:
+- src/app/game/scenes/PlayScene.ts — how Body_A is loaded and animated
+- public/assets/ASSETS_MAP.md — current sprite sheet dimensions
+- src/app/game/animations/ or PlayScene anim definitions — existing anim keys
+
+═══ PART 1: Setup Pixellab client ═══
+
+Install the Pixellab Python SDK:
+  pip install pixellab pillow
+
+Create `scripts/generate_player_sprites.py` — standalone Python script
+(not part of Next.js build, run manually from repo root).
+
+The script uses:
+  PIXELLAB_API_KEY — read from .env.local (or env var)
+  client = pixellab.Client(secret=API_KEY)
+
+Target sprite size: 64×64 px per frame
+Output directory: public/assets/generated/player/
+
+═══ PART 2: Generate base character ═══
+
+Use `client.generate_image_pixflux()` to generate a single base character frame:
+  description: "pixel art top-down RPG human adventurer, brown leather armor,
+                holding sword, neutral idle pose, transparent background"
+  image_size: {width: 64, height: 64}
+  view: "high top-down"
+  direction: "south"
+  no_background: True
+  shading: "basic shading"
+  detail: "medium detail"
+
+Save the result as `public/assets/generated/player/base_south.png`.
+
+═══ PART 3: Rotate to 8 directions ═══
+
+Use `client.rotate()` to generate all 8 directions from the base south frame:
+  directions: ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"]
+  from_direction: "south"
+  to_direction: <each>
+  view: "high top-down"
+  image_size: {width: 64, height: 64}
+
+Save each as `base_{direction}.png` (e.g. base_north.png, base_north-east.png...).
+Use the same seed for all rotations for visual consistency.
+
+═══ PART 4: Generate walk animation — 8 directions ═══
+
+For each of the 8 directions, call `client.animate_with_text()`:
+  action: "walk"
+  n_frames: 8  (model generates 4 frames per call — make 2 calls per direction:
+                 call A: start_frame_index=0, call B: start_frame_index=4)
+  view: "high top-down"
+  direction: <current direction>
+  reference_image: base_{direction}.png
+  image_size: {width: 64, height: 64}
+
+Assemble the 8 frames into a single horizontal sprite sheet PNG:
+  walk_{direction}.png — 512×64 px (8 frames × 64px wide)
+
+Save all 8 to public/assets/generated/player/walk/.
+
+═══ PART 5: Generate death animation — 8 directions ═══
+
+Same as walk but action: "death" with n_frames: 6 (single call, start_frame_index=0).
+Assemble into death_{direction}.png — 384×64 px (6 frames × 64px wide).
+Save to public/assets/generated/player/death/.
+
+═══ PART 6: Load in Phaser (smoke test) ═══
+
+In PlayScene.ts, add a temporary preload for walk_south.png and death_south.png
+at frameWidth=64, frameHeight=64. Add a temp animation key "player_walk_south"
+and verify it plays correctly in the browser before proceeding to W62.
+
+DO NOT yet replace the main Body_A player sprite — only load the new sheets
+alongside existing ones and test one animation in isolation.
+
+Confirm when done. Show the directory tree of public/assets/generated/player/
+and the approximate API credit cost (log usage.usd per call).
+```
+
+---
+
+### [ ] Wieczór 62: Pixellab sprite generation — player attack animations (sword/axe/pickaxe) + full Phaser integration
+
+```
+Generate the remaining player animations and replace Body_A entirely in PlayScene.
+
+Read these files first:
+- src/app/game/scenes/PlayScene.ts — all existing animation keys and preload calls
+- public/assets/generated/player/ — output from W61
+
+═══ PART 1: Generate attack animations — 8 directions × 3 action types ═══
+
+For each direction × action, call client.animate_with_text():
+  actions: ["sword attack", "axe swing", "pickaxe hit"]
+  n_frames: 6 per action (single call per direction per action)
+  view: "high top-down"
+  reference_image: base_{direction}.png (from W61)
+  image_size: {width: 64, height: 64}
+
+Total calls: 8 directions × 3 actions = 24 animate_with_text calls.
+
+Output:
+  public/assets/generated/player/sword/sword_{direction}.png  — 384×64
+  public/assets/generated/player/axe/axe_{direction}.png      — 384×64
+  public/assets/generated/player/pickaxe/pickaxe_{direction}.png — 384×64
+
+═══ PART 2: Replace Body_A in PlayScene.ts ═══
+
+Map Pixellab direction names → game directions:
+  "south"      → facing down  (was "down" in Body_A)
+  "north"      → facing up
+  "east"       → facing right
+  "west"       → facing left
+  "south-east" → diagonal
+  ... etc.
+
+Update PlayScene.ts:
+- Remove Body_A preload, replace with preload of all generated sheets
+  (walk × 8, sword × 8, axe × 8, pickaxe × 8, death × 8 = 40 sprite sheets)
+- Update all animation definitions:
+    "player_walk_south"    → walk/walk_south.png, frames 0–7, repeat -1
+    "player_sword_south"   → sword/sword_south.png, frames 0–5, repeat 0
+    ... (all 40 combos)
+- Update `playAnim(direction, action)` lookup table — maps current 4-dir system
+  (up/down/left/right) to new 8-dir system; diagonals used when moving at 45°
+  (check both X and Y velocity components for diagonal detection)
+- Update `PLAYER_HW`/`PLAYER_HH` if needed for 64px frame size
+
+═══ PART 3: Diagonal movement detection ═══
+
+In PlayScene update loop, when both X and Y velocity are non-zero,
+pick the closest cardinal/diagonal direction from 8 options.
+Example: moving right+down → "south-east".
+
+This enables full 8-directional animation playback.
+
+═══ PART 4: Browser test ═══
+
+Verify in browser:
+- Walk in all 8 directions — correct animation plays
+- Attack with sword/axe/pickaxe — correct animation + returns to walk after
+- Death — plays once on HP=0, character freezes on last frame
+
+Confirm when done. List any visual glitches.
+```
+
+---
+
+### [ ] Wieczór 63: Pixellab sprite generation — monsters (orc + skeleton, walk + attack, 8 directions)
+
+```
+Generate monster sprites to replace hunter/enemy sprites in PlayScene.
+
+Read these files first:
+- src/app/game/scenes/PlayScene.ts — createEnemySprites(), addEnemy(), EnemyData interface
+- server/src/monsterConfig.ts — MONSTER_CONFIG variants (hunter, fire_hunter, boss_hunter)
+- public/assets/generated/player/base_south.png — use as style reference for consistent art style
+
+═══ PART 1: Generate orc base sprites ═══
+
+Generate 2 base orc characters (normal + boss variant) using generate_image_pixflux():
+  orc_base: "pixel art top-down RPG orc warrior, green skin, leather armor, aggressive pose,
+             transparent background, consistent with existing player art style"
+  orc_boss: same but "large orc, red armor, glowing eyes, scarred face"
+
+Both at 64×64, view: "high top-down", direction: "south", no_background: True.
+Rotate both to all 8 directions (16 rotate calls total).
+Save to public/assets/generated/enemies/orc/.
+
+═══ PART 2: Generate skeleton base sprites ═══
+
+skeleton_base: "pixel art top-down RPG skeleton warrior, white bones, wielding sword,
+               transparent background"
+At 64×64, rotate to 8 directions.
+Save to public/assets/generated/enemies/skeleton/.
+
+═══ PART 3: Generate enemy animations ═══
+
+For each monster type (orc_base, orc_boss, skeleton_base) × each direction:
+  - walk: animate_with_text action="walk", n_frames=6
+  - attack: animate_with_text action="melee attack", n_frames=6
+
+Total: 3 types × 8 directions × 2 actions = 48 animate_with_text calls.
+
+Save:
+  public/assets/generated/enemies/{type}/walk/walk_{direction}.png  — 384×64
+  public/assets/generated/enemies/{type}/attack/attack_{direction}.png — 384×64
+
+═══ PART 4: Update enemy rendering in PlayScene.ts ═══
+
+Update createEnemySprites() to load the appropriate sprite sheet based on
+enemy.configId from MONSTER_CONFIG:
+  "hunter"      → orc_base sprites
+  "fire_hunter" → orc_base sprites with Phaser setTint(0xff4400) (keep tint system)
+  "boss_hunter" → orc_boss sprites
+
+Remove the hardcoded Body_A enemy sprite.
+Update addEnemy() and all enemy animation keys similarly to W62 player update.
+
+Enemy AI direction:
+  Enemy velocity vector → closest of 8 directions → play walk_{direction}
+  On attack → play attack_{direction} once, then resume walk
+
+═══ PART 5: Browser test ═══
+
+Verify:
+- Orc enemies walk toward player with correct directional animation
+- On attack range, attack animation plays
+- Boss uses larger orc_boss sprite
+- Tint still works on fire_hunter variant
+
+Confirm when done. Note approximate total API credit cost for W61+W62+W63.
+```
+
+---
+
+*End of plan. Total: 63 evenings across ~11 weeks.*

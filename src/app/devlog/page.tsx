@@ -7,9 +7,9 @@ const pixelFont = Press_Start_2P({ weight: "400", subsets: ["latin"] });
 
 // ─── Plan progress ────────────────────────────────────────────────────────────
 const TOTAL_TASKS = 60;
-const DONE_TASKS = 46;
+const DONE_TASKS = 47;
 const PROGRESS_PCT = Math.round((DONE_TASKS / TOTAL_TASKS) * 100);
-const NEXT_LABEL = "T47 — Next feature";
+const NEXT_LABEL = "T48 — Security audit";
 
 // ─── Embers ───────────────────────────────────────────────────────────────────
 const EMBER_DATA = [
@@ -60,6 +60,25 @@ interface LogEntry {
 }
 
 const DEV_LOG: LogEntry[] = [
+  {
+    date: "2026-03-29",
+    tag: "T-COMBAT · gameplay",
+    title: "The world gets harder the further you go — and dying now has real consequences",
+    items: [
+      "Difficulty now scales dynamically: enemies grow stronger the longer your group has been playing, and even stronger the further from base you venture.",
+      "Four danger zones radiate outward from spawn — the safest zone has basic hunters, the outer ring has elite bosses. You can see which zone you're in the moment you cross the border.",
+      "When HP hits zero, your character drops random loot and respawns at the nearest bonfire after 3 seconds — with reduced hunger and sanity. Your gear stays with you.",
+      "New players joining an existing group are protected for 3 days: enemies deal half damage and death penalties are minimal. A shield icon shows how long protection lasts.",
+      "Difficulty level is shown in the game header — current name, color, and a progress bar to the next threshold.",
+      "All difficulty parameters (scaling speed, zone sizes, death penalties, protection days) can be changed through mods. Groups can AI-generate custom difficulty rules.",
+    ],
+    challenges: [
+      {
+        what: "The server TypeScript config blocked importing shared types from the frontend folder — a rootDir constraint caused compile errors.",
+        how: "We mirrored the required types into a separate server-side file. This follows the same pattern already used for item and monster configs in the project.",
+      },
+    ],
+  },
   {
     date: "2026-03-26",
     tag: "devlog · gameplay",

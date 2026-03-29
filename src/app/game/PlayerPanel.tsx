@@ -16,6 +16,7 @@ type Stats = {
   nickname: string;
   isNight: boolean;
   equipment?: Record<string, string>;
+  newPlayerProtectionDaysLeft?: number;
 };
 
 
@@ -219,6 +220,29 @@ export default function PlayerPanel() {
           </button>
         )}
       </div>
+
+      {/* ── NEW PLAYER PROTECTION ── */}
+      {(stats?.newPlayerProtectionDaysLeft ?? 0) > 0 && (
+        <div style={{
+          margin: "4px 10px",
+          padding: "5px 8px",
+          background: "rgba(74,222,128,0.08)",
+          border: "1px solid rgba(74,222,128,0.3)",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        }}>
+          <span style={{ fontSize: 12, lineHeight: 1 }}>🛡️</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+            <span style={{ fontFamily: S.pixel, color: "#4ade80", fontSize: 7, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Ochrona
+            </span>
+            <span style={{ fontFamily: S.body, color: "#46465b", fontSize: 9 }}>
+              {stats!.newPlayerProtectionDaysLeft}d pozostały
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* ── TACTICAL_MAP (minimap) ── */}
       <div style={{ padding: "6px 10px", borderBottom: "1px solid #16172e" }}>

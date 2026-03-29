@@ -3,13 +3,16 @@
 // Evaluated by GameRoom every tick and on specific game events.
 
 export type RuleTrigger =
-  | 'on_tick'         // every TICK_RATE ms (1s)
-  | 'every_Ns'        // once every rule.intervalMs ms (timer per rule)
-  | 'on_eat'          // when a player eats an item
-  | 'on_cook'         // when cooking completes
-  | 'on_hunger_low'   // when player.hunger < 20 (throttled: once/min per player)
-  | 'on_enemy_death'  // when an enemy dies
+  | 'on_tick'                 // every TICK_RATE ms (1s)
+  | 'every_Ns'                // once every rule.intervalMs ms (timer per rule)
+  | 'on_eat'                  // when a player eats an item
+  | 'on_cook'                 // when cooking completes
+  | 'on_hunger_low'           // when player.hunger < 20 (throttled: once/min per player)
+  | 'on_enemy_death'          // when an enemy dies
   | 'on_player_join'
+  | 'on_difficulty_increase'  // when group reaches a new difficulty level
+  | 'on_player_death'         // when a player dies
+  | 'on_zone_enter'           // when a player enters a new zone (fired from client)
 
 export interface RuleCondition {
   field: string         // 'player.hunger' | 'world.isNight' | 'item.type' | 'enemy.configId' | 'random'
@@ -18,7 +21,7 @@ export interface RuleCondition {
 }
 
 export interface RuleEffect {
-  action: 'modify_stat' | 'add_item' | 'spawn_enemy' | 'broadcast_message' | 'set_weather'
+  action: 'modify_stat' | 'add_item' | 'spawn_enemy' | 'broadcast_message' | 'set_weather' | 'modify_difficulty'
   // modify_stat: field='hp'|'hunger'|'sanity', value=delta (number), target='player'|'all_players'
   // add_item:    field=itemId OR pool=[...itemIds], value=qty (number, default 1), target='player'|'all_players'
   // spawn_enemy: value=configId (string), qty=count (number, default 1)

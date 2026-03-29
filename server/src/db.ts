@@ -268,6 +268,41 @@ export async function loadApprovedMods(groupId: string): Promise<ApprovedMod[]> 
   }
 }
 
+// ─── Difficulty helpers ───────────────────────────────────────────────────────
+
+/** Returns the number of days since the group was created (fractional). */
+export async function getGroupAgeDays(groupId: string): Promise<number> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("groups")
+      .select("created_at")
+      .eq("id", groupId)
+      .single();
+    if (error || !data) return 0;
+    return (Date.now() - new Date(data.created_at).getTime()) / 86_400_000;
+  } catch (err) {
+    console.warn("[DB] getGroupAgeDays exception:", err);
+    return 0;
+  }
+}
+
+/** Returns the date when a player joined a specific group (via group_members). */
+export async function getPlayerJoinedGroupAt(playerId: string, groupId: string): Promise<Date | null> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("group_members")
+      .select("joined_at")
+      .eq("player_id", playerId)
+      .eq("group_id", groupId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return new Date(data.joined_at);
+  } catch (err) {
+    console.warn("[DB] getPlayerJoinedGroupAt exception:", err);
+    return null;
+  }
+}
+
 export async function deletePlayer(userId: string): Promise<void> {
   try {
     const { error } = await supabaseAdmin

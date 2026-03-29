@@ -174,6 +174,13 @@ export class PlayScene extends Scene {
   private inventory = new Map<string, number>();
   private invUI!: InventoryUI;
 
+  // Difficulty / death / zone
+  private isDead = false;
+  private deathOverlay: Phaser.GameObjects.Container | null = null;
+  private currentZone: 0 | 1 | 2 | 3 = 0;
+  private lastZoneToastZone = -1;
+  private zoneBoundaries: [number, number, number] = [500, 1500, 3000];
+
   constructor() {
     super({ key: "PlayScene" });
   }
@@ -634,6 +641,33 @@ export class PlayScene extends Scene {
 
     room.onMessage("player_damage", (data: { damage: number; hp: number }) => {
       this.showPickupText(this.px, this.py - 50, `-${data.damage} HP`);
+    });
+
+    room.onMessage("player_death", (data: { sessionId: string; nickname: string; droppedItems: string[]; x: number; y: number }) => {
+      // Only show death overlay for own player
+      if (this.room && data.sessionId === (this.room as any).sessionId) {
+        this.isDead = true;
+        this._showDeathOverlay();
+      } else {
+        // Show death notification in event log for other players
+        window.dispatchEvent(new CustomEvent("gameRoomEvent", { detail: {
+          id: `death_${Date.now()}`, type: "death",
+          playerName: data.nickname, message: `☠ ${data.nickname} zginął(a)`, timestamp: Date.now(),
+        }}));
+      }
+    });
+
+    room.onMessage("player_respawn", (data: { x: number; y: number; hp: number }) => {
+      this.isDead = false;
+      this._hideDeathOverlay();
+      this.px = data.x;
+      this.py = data.y;
+      this.sprites.forEach((s) => { s.x = this.px; s.y = this.py; });
+      this.showPickupText(this.px, this.py - 50, "Odrodzono przy ognisku", "#4ade80");
+    });
+
+    room.onMessage("difficulty_increase", (data: { level: number; name: string; color: string }) => {
+      this._showZoneToast(`⬆ Poziom trudności: ${data.name}`, data.color, 5000);
     });
 
     room.onMessage("room_event", (data: { id: string; type: string; playerName: string; message: string; timestamp: number }) => {
@@ -1262,6 +1296,12 @@ export class PlayScene extends Scene {
   update(time: number, delta: number) {
     const dt = delta / 1000;
 
+    // Skip input processing while dead
+    if (this.isDead) return;
+
+    // Zone transition check (every frame, cheap Math.hypot)
+    this._checkZoneTransition();
+
     // Action keys
     const eJustDown        = Phaser.Input.Keyboard.JustDown(this.actionKeys["E"]);
     const fJustDown        = Phaser.Input.Keyboard.JustDown(this.actionKeys["F"]);
@@ -1503,6 +1543,88 @@ export class PlayScene extends Scene {
   }
 
   /** Returns true if any tile overlapping the player AABB (px±HW, py±HH) is blocked. */
+  // ── Death overlay ─────────────────────────────────────────────────────────
+
+  private _showDeathOverlay(): void {
+    if (this.deathOverlay) return;
+    const cx = this.cameras.main.width / 2;
+    const cy = this.cameras.main.height / 2;
+
+    const bg = this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.65)
+      .setOrigin(0, 0).setScrollFactor(0).setDepth(200);
+    const skull = this.add.text(cx, cy - 40, "☠", { fontSize: "48px", color: "#f87171" })
+      .setOrigin(0.5).setScrollFactor(0).setDepth(201);
+    const msg = this.add.text(cx, cy + 20, "Poleciałeś...", {
+      fontSize: "14px", color: "#e4e3fe",
+      fontFamily: "var(--font-pixel), 'Press Start 2P', monospace",
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(201);
+    const countdown = this.add.text(cx, cy + 55, "Odrodzenie za 3...", {
+      fontSize: "10px", color: "#a9a9c2",
+      fontFamily: "var(--font-pixel), 'Press Start 2P', monospace",
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(201);
+
+    this.deathOverlay = this.add.container(0, 0, [bg, skull, msg, countdown]).setDepth(200);
+
+    let count = 3;
+    const timer = this.time.addEvent({
+      delay: 1000,
+      repeat: 2,
+      callback: () => {
+        count--;
+        if (count > 0) countdown.setText(`Odrodzenie za ${count}...`);
+        else { countdown.setText("Odrodzono!"); timer.destroy(); }
+      },
+    });
+  }
+
+  private _hideDeathOverlay(): void {
+    if (!this.deathOverlay) return;
+    this.deathOverlay.destroy();
+    this.deathOverlay = null;
+  }
+
+  // ── Zone toast ────────────────────────────────────────────────────────────
+
+  private _showZoneToast(message: string, color: string, duration = 3000): void {
+    const cx = this.cameras.main.width / 2;
+    const toastBg = this.add.rectangle(cx, 70, 320, 36, 0x0b0c1f, 0.92)
+      .setScrollFactor(0).setDepth(150);
+    const toastBorder = this.add.rectangle(cx, 70, 320, 36)
+      .setStrokeStyle(1, Phaser.Display.Color.HexStringToColor(color).color, 1)
+      .setScrollFactor(0).setDepth(150).setFillStyle(0, 0);
+    const toastText = this.add.text(cx, 70, message, {
+      fontSize: "9px", color,
+      fontFamily: "var(--font-pixel), 'Press Start 2P', monospace",
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(151);
+
+    this.time.delayedCall(duration, () => {
+      toastBg.destroy(); toastBorder.destroy(); toastText.destroy();
+    });
+  }
+
+  /** Called from update — checks if player crossed a zone boundary. */
+  private _checkZoneTransition(): void {
+    const dist = Math.hypot(this.px, this.py);
+    const [z1, z2, z3] = this.zoneBoundaries;
+    let zone: 0 | 1 | 2 | 3;
+    if      (dist < z1) zone = 0;
+    else if (dist < z2) zone = 1;
+    else if (dist < z3) zone = 2;
+    else                zone = 3;
+
+    if (zone !== this.currentZone) {
+      this.currentZone = zone;
+      if (zone !== this.lastZoneToastZone) {
+        this.lastZoneToastZone = zone;
+        const zoneNames = ["Bezpieczna strefa", "Strefa 1 — Niebezpiecznie", "Strefa 2 — Groźnie", "Strefa 3 — Śmiertelnie"];
+        const zoneColors = ["#4caf50", "#ffcc00", "#ff9800", "#f44336"];
+        this._showZoneToast(`⚠ ${zoneNames[zone]}`, zoneColors[zone]);
+        // Notify server for on_zone_enter rule trigger
+        this.room?.send("zone_enter", { zone });
+      }
+    }
+  }
+
   private isBoxBlocked(px: number, py: number): boolean {
     const minTX = Math.floor((px - PLAYER_HW) / TILE_SIZE);
     const maxTX = Math.floor((px + PLAYER_HW - 1) / TILE_SIZE);

@@ -11,7 +11,55 @@ const S = {
 };
 
 type RoomInfo = { playerCount: number; roomId: string };
-type Stats = { isNight: boolean; worldTime: number };
+type Stats = {
+  isNight: boolean;
+  worldTime: number;
+  groupAgeDays?: number;
+  difficultyLevel?: number;
+  difficultyName?: string;
+  difficultyColor?: string;
+  daysToNextLevel?: number;
+};
+
+function DifficultyBadge({ stats }: { stats: Stats }) {
+  const name = stats.difficultyName ?? "Spokojnie";
+  const color = stats.difficultyColor ?? "#4caf50";
+  const days = stats.groupAgeDays ?? 0;
+  const daysToNext = stats.daysToNextLevel ?? 0;
+  // Progress within current level — show days since level start
+  // We can't know exact minDay here so show day counter + daysToNext
+  const hasNext = daysToNext > 0;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, minWidth: 180 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontFamily: S.pixel, fontSize: 9, color, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+          ⚠ {name}
+        </span>
+        <span style={{ fontFamily: S.body, color: "#46465b", fontSize: 9 }}>
+          Dzień {days}
+        </span>
+        {hasNext && (
+          <span style={{ fontFamily: S.body, color: "#46465b", fontSize: 9 }}>
+            · ↑ za {daysToNext}d
+          </span>
+        )}
+      </div>
+      {hasNext && (
+        <div style={{ width: "100%", height: 3, background: "#16172e", overflow: "hidden" }}>
+          <div style={{
+            height: "100%",
+            background: color,
+            // Progress: we don't know exact level start, show as fraction of daysToNext
+            // Use a rough animation placeholder — actual value isn't calculable client-side
+            width: `${Math.min(100, (1 - daysToNext / 7) * 100)}%`,
+            transition: "width 2s linear",
+          }} />
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface ApprovedMod {
   id: string;
@@ -170,8 +218,13 @@ export default function GameHeader() {
         )}
       </div>
 
+      {/* CENTER-LEFT — difficulty badge */}
+      {stats && (stats.difficultyName || stats.groupAgeDays !== undefined) && (
+        <DifficultyBadge stats={stats} />
+      )}
+
       {/* CENTER — day/night cycle */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, flex: 1, maxWidth: 360 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, flex: 1, maxWidth: 280 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 14, lineHeight: 1 }}>{isNight ? "🌙" : "☀"}</span>
           <span style={{

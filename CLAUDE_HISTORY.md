@@ -1372,6 +1372,50 @@ Pamiętaj: `ANTHROPIC_API_KEY` dodać na Vercel przed deplojem.
 
 ---
 
+## Session 46 — 2026-03-29 (T-COMBAT)
+
+### What was done
+- **T-COMBAT COMPLETE ✅** — Hybrydowy system trudności + śmierć/odrodzenie gracza + ochrona nowego gracza + strefy wrogów + moddowalna trudność
+- **`src/shared/modConfig.ts`** — dodano `DifficultyOverrides`, `DifficultyLevel`, `DeathDropThreshold` interfaces; rozszerzono ModRule trigger union o nowe triggery; dodano `DEFAULT_DIFFICULTY_LEVELS` (Spokojnie/Niebezpiecznie/Groźnie/Śmiertelnie) + `DEFAULT_DEATH_DROP_THRESHOLDS`; pole `difficultyOverrides?: DifficultyOverrides` w `ModConfig`
+- **`server/src/difficultyConfig.ts`** (nowy) — mirror typów DifficultyOverrides dla serwera (tsconfig rootDir="./src" uniemożliwia import z ../../src/shared)
+- **`server/src/db.ts`** — `getGroupAgeDays(groupId)` (czyta `groups.created_at`); `getPlayerJoinedGroupAt(playerId, groupId)` (czyta `group_members.joined_at` — wymaga nowej kolumny)
+- **`server/src/GameRoom.ts`** — Nowe stałe (DEFAULT_ZONE_BOUNDARIES, DEFAULT_DAY_SCALE_FACTOR=0.15, DEFAULT_ZONE_SCALE_FACTOR=0.4, DEFAULT_MAX_DIFFICULTY=8, DEFAULT_NEW_PLAYER_PROTECTION_DAYS=3, NEW_PLAYER_PROTECTION_DMG_MULT=0.5); nowe pola (difficultyOverrides, groupAgeDays, lastDifficultyLevel, playerJoinedGroupAt Map); onCreate ładuje groupAgeDays + timer co 60s z wykrywaniem level-up; onJoin/onLeave zarządza playerJoinedGroupAt; nowe metody: `getDistanceZone()`, `getDifficultyMultiplier()`, `getDifficultyLevelInfo()`, `_checkDifficultyLevelUp()`, `isNewPlayerProtected()`, `getProtectionDaysLeft()`, `resolveDeathDrops()`, `handlePlayerDeath()`, `_getEnemyConfigForPosition()`; sendStatsToPlayers rozszerzone o groupAgeDays/difficultyLevel/difficultyName/difficultyColor/daysToNextLevel/newPlayerProtectionDaysLeft; spawnSingleEnemy stosuje difficulty multiplier do HP; activateZone używa _getEnemyConfigForPosition(); applyMod scala difficultyOverrides; deactivateMod resetuje difficultyOverrides
+- **`server/src/RuleEngine.ts`** — Dodano do RuleTrigger: `'on_difficulty_increase' | 'on_player_death' | 'on_zone_enter'`; dodano do RuleEffect action: `'modify_difficulty'`
+- **`src/app/game/GameHeader.tsx`** — Rozszerzone Stats type; nowy `DifficultyBadge` komponent (nazwa poziomu + pasek postępu do następnego dnia); wstawiony między lewą sekcją a day/night cycle
+- **`src/app/game/PlayerPanel.tsx`** — Dodano `newPlayerProtectionDaysLeft` do Stats type; badge 🛡️ Ochrona po OPERATOR headerze (widoczny tylko gdy > 0 dni)
+- **`src/app/game/scenes/PlayScene.ts`** — Nowe pola: isDead, deathOverlay, currentZone, lastZoneToastZone, zoneBoundaries; handlery: player_death (własna śmierć → overlay, cudza → EventLog), player_respawn (teleport + ukrycie overlay), difficulty_increase (zone toast); nowe metody: `_showDeathOverlay()` (3s countdown), `_hideDeathOverlay()`, `_showZoneToast()`, `_checkZoneTransition()`; update() wychodzi wcześnie gdy isDead
+- **`src/app/api/forge/generate/route.ts`** — SYSTEM_PROMPT rozszerzony o DifficultyOverrides (zakres dozwolonych wartości + kiedy używać)
+- **`docs/DESIGN_PROPOSALS.md`** (nowy) — Propozycje designu T-COMBAT i T-GOALS z alternatywami
+
+### Decisions made
+- **Hybrydowa formuła**: `(1 + groupDays × dayScaleFactor) × (1 + distanceZone × zoneScaleFactor)` capped at maxDifficultyMultiplier (8×) — łączy progresję czasową (motywacja długoterminowa) z ryzykiem eksploracji (decyzja przestrzenna)
+- **Strefy wrogów bez nowych sprite'ów**: hunter/fire_hunter/boss_hunter — tint+scale+particles tworzą wystarczającą różnorodność wizualną; Pixellab sprite'y później
+- **Drop przy śmierci nie obejmuje ekwipunku**: tylko losowe przedmioty z inventory — gracz nie traci wypracowanego sprzętu przy śmierci
+- **Odrodzenie przy ognisku** zamiast (0,0) gdy bonfire w pobliżu: gracze budują bazy z bonfirami jako strategia survivalu
+- **DifficultyOverrides w ModConfig**: trudność jest częścią systemu modyfikacji — gracze mogą AI-generować mody zmieniające mechaniki trudności
+- **server/src/difficultyConfig.ts** jako mirror: istniejący wzorzec (monsterConfig, itemConfig, lootConfig mają odpowiedniki server/client)
+
+### Problems encountered
+- **Server tsconfig rootDir="./src"**: próba importu z `../../src/shared/modConfig` rzucała TypeScript error. Fix: `server/src/difficultyConfig.ts` z mirrorem typów (ten sam wzorzec co inne duplicated configs)
+- **HP=0, gracz nadal stoi (bug zgłoszony przez użytkownika)**: serwer Colyseus nie był restarted po zmianach kodu — `handlePlayerDeath()` nie był załadowany w live instance. Fix: restart lokalnego serwera (`cd server && npm run dev`)
+
+### Supabase migration needed (do wykonania ręcznie)
+```sql
+ALTER TABLE group_members ADD COLUMN IF NOT EXISTS joined_at TIMESTAMPTZ NOT NULL DEFAULT now();
+```
+
+### Next step
+**Wieczór 48** — Security audit (patrz PLAN.md pod Wieczór 48):
+- Server-side validation (distance checks, stat caps, inventory limits, rate limiting)
+- Supabase RLS policies (tighten "allow all" → per-user policies)
+- API route validation (Zod schemas, auth check na każdej trasie)
+- Environment variable audit (brak NEXT_PUBLIC_ na sekretach)
+
+**TODO przed produkcją:** zmienić `VOTE_THRESHOLD=1` → `3` w `src/app/api/forge/vote/route.ts:13`
+**TODO po T-COMBAT:** T-GOALS — system celów gry (T48+ sprawdź DESIGN_PROPOSALS.md)
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,
