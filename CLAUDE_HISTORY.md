@@ -1416,6 +1416,26 @@ ALTER TABLE group_members ADD COLUMN IF NOT EXISTS joined_at TIMESTAMPTZ NOT NUL
 
 ---
 
+## Session 48 — 2026-04-07 (Session 28 — kontynuacja, bugfixy)
+
+### What was done
+- **Respawn fix:** `_hideDeathOverlay` używało `.destroy()` na Phaser `TimerEvent` — rzuca wyjątek gdy timer już zakończył wszystkie 3 ticki i Phaser usunął go wewnętrznie. Fix: `this.time.removeEvent()` zamiast `.destroy()` — bezpieczne nawet po zakończeniu timera
+- **Liczba wrogów:** `ENEMY_SPAWN_RADIUS` 3→2 (49→25 stref), `MAX_ALIVE_ENEMIES` 60→30, spawn chance 35%→27% lone / 15%→7% pair / 5%→1% trio, pustych 45%→65% — ok. 8–10 wrogów w zasięgu zamiast 25–30
+
+### Decisions made
+- `this.time.removeEvent()` to prawidłowy Phaser API do anulowania timera, `.destroy()` nie jest safe po completion
+
+### Problems encountered
+- Death overlay zostawał na ekranie gdy `player_respawn` przychodził po zakończeniu 3-sekundowego countdownu (timer już skompletowany → `.destroy()` throw → `deathOverlay.destroy()` nigdy nie wywoływane)
+
+### Next step
+**Wieczór 48** — Security audit:
+- Server-side validation (distance checks, stat caps, inventory limits)
+- Supabase RLS policies
+- API route validation (Zod schemas, auth check na każdej trasie)
+
+---
+
 ## Session 47 — 2026-04-07 (Session 28 — multiplayer stability)
 
 ### What was done

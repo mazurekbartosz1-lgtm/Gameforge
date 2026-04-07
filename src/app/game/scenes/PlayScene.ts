@@ -1668,7 +1668,7 @@ export class PlayScene extends Scene {
 
   private _hideDeathOverlay(): void {
     if (this.deathCountdownTimer) {
-      this.deathCountdownTimer.destroy();
+      this.time.removeEvent(this.deathCountdownTimer); // safe even if timer already completed
       this.deathCountdownTimer = null;
     }
     if (!this.deathOverlay) return;

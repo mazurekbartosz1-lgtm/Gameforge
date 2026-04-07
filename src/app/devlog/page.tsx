@@ -8,7 +8,7 @@ const pixelFont = Press_Start_2P({ weight: "400", subsets: ["latin"] });
 
 // ─── Plan progress ────────────────────────────────────────────────────────────
 const TOTAL_TASKS = 60;
-const DONE_TASKS = 47;
+const DONE_TASKS = 48;
 const PROGRESS_PCT = Math.round((DONE_TASKS / TOTAL_TASKS) * 100);
 const NEXT_LABEL = "T48 — Security audit";
 
@@ -61,6 +61,25 @@ interface LogEntry {
 }
 
 const DEV_LOG: LogEntry[] = [
+  {
+    date: "2026-04-07",
+    tag: "stability · gameplay",
+    title: "The game no longer drops you mid-session — and dying is finally fair",
+    items: [
+      "A hidden server bug was silently disconnecting players the moment they crossed a zone boundary — it has been fixed. The game now handles unknown messages gracefully instead of closing the connection.",
+      "Enemies respawn in areas you've cleared — previously killed zones stayed empty forever. Each cleared area refills after 30 seconds, keeping the world alive.",
+      "Enemy density has been tuned down to roughly 8–10 enemies visible at once, from the previous 25–30. The world feels dangerous but not overwhelming.",
+      "From the moment you die until 3 seconds after respawn, you are completely invincible — enemies cannot damage you. A blinking shield indicator shows the protection window.",
+      "If you switch tabs or leave the game page, your character receives AFK protection: enemies deal no damage until you return. A yellow indicator shows when protection is active.",
+      "The death countdown timer no longer gets stuck — the respawn overlay now always closes correctly when the server confirms the revival.",
+    ],
+    challenges: [
+      {
+        what: "The death overlay sometimes stayed on screen permanently after respawn — the player was stuck watching the 'Respawning...' screen with no way out.",
+        how: "The countdown timer was already finished by the time the server sent the respawn signal, and calling destroy() on a completed Phaser timer throws silently — preventing the overlay from closing. Switched to removeEvent() which is safe regardless of timer state.",
+      },
+    ],
+  },
   {
     date: "2026-03-29",
     tag: "T-COMBAT · gameplay",

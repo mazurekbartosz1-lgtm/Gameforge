@@ -130,9 +130,9 @@ const NEW_PLAYER_PROTECTION_DMG_MULT = 0.5;
 const TILE_PX             = 16;   // pixels per tile (mirrors client TILE_SIZE)
 const ENEMY_ZONE_TILES    = 16;   // tiles per enemy spawn zone side (256 px)
 const ENEMY_ZONE_PX       = TILE_PX * ENEMY_ZONE_TILES; // 256 px per zone
-const ENEMY_SPAWN_RADIUS  = 3;    // zones to activate around player (7×7 = 49 zones)
+const ENEMY_SPAWN_RADIUS  = 2;    // zones to activate around player (5×5 = 25 zones)
 const ENEMY_SPAWN_CLEAR   = 2;    // zone radius around origin kept empty
-const MAX_ALIVE_ENEMIES   = 60;   // soft cap on alive enemy count
+const MAX_ALIVE_ENEMIES   = 30;   // soft cap on alive enemy count
 const ENEMY_ZONE_RESPAWN_MS = 30_000; // ms after last kill before zone can respawn
 
 const ENEMY_HP             = 30;
@@ -1204,10 +1204,10 @@ export class GameRoom extends Room<GameRoomOptions> {
 
     const h = this.hashZone(zx, zy);
     let count: number;
-    if      (h < 0.45) return;         // 45% — empty zone
-    else if (h < 0.80) count = 1;      // 35% — lone hunter
-    else if (h < 0.95) count = 2;      // 15% — pair
-    else               count = 3;      // 5%  — trio
+    if      (h < 0.65) return;         // 65% — empty zone
+    else if (h < 0.92) count = 1;      // 27% — lone hunter
+    else if (h < 0.99) count = 2;      // 7%  — pair
+    else               count = 3;      // 1%  — trio
 
     let alive = 0;
     this.state.enemies.forEach((e: EnemyState) => { if (e.isAlive) alive++; });
