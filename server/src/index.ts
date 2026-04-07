@@ -1,4 +1,9 @@
 import "dotenv/config";
+
+// Log all unhandled errors so we can see what triggers 4002
+process.on("uncaughtException",    (err) => console.error("[UNCAUGHT]", err));
+process.on("unhandledRejection",   (err) => console.error("[UNHANDLED_REJECTION]", err));
+
 import { Server, matchMaker } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { Encoder } from "@colyseus/schema";

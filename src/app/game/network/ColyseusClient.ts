@@ -90,6 +90,10 @@ export function getRoom(): Room | null {
   return room;
 }
 
+export function clearRoom() {
+  room = null;
+}
+
 /** Create a test_room on Colyseus with modConfig applied — returns roomId (HTTP only, no WS). */
 export async function createTestRoom(modConfig: unknown): Promise<string> {
   const raw = await fetch(`${httpUrl}/matchmake/create/test_room`, {

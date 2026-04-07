@@ -2,6 +2,7 @@
 
 import { Press_Start_2P } from "next/font/google";
 import { useState, useRef, FormEvent } from "react";
+import { SignInButton, useAuth } from "@clerk/nextjs";
 
 const pixelFont = Press_Start_2P({ weight: "400", subsets: ["latin"] });
 
@@ -412,6 +413,7 @@ function Accordion({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function DevLogPage() {
+  const { isSignedIn } = useAuth();
   const progressBlocks = 30;
   const filledBlocks = Math.round((DONE_TASKS / TOTAL_TASKS) * progressBlocks);
 
@@ -445,6 +447,44 @@ export default function DevLogPage() {
           ))}
         </div>
       </div>
+
+      {/* Sign in button — top right */}
+      {!isSignedIn && (
+        <div style={{ position: "fixed", top: 20, right: 24, zIndex: 100 }}>
+          <SignInButton mode="modal">
+            <button className={pixelFont.className} style={{
+              fontSize: 9,
+              background: "rgba(0,0,0,0.7)",
+              border: "2px solid #FF8C00",
+              color: "#FF8C00",
+              padding: "10px 16px",
+              cursor: "pointer",
+              letterSpacing: "0.1em",
+              boxShadow: "0 0 12px rgba(255,140,0,0.25)",
+            }}>
+              SIGN IN
+            </button>
+          </SignInButton>
+        </div>
+      )}
+      {isSignedIn && (
+        <div style={{ position: "fixed", top: 20, right: 24, zIndex: 100 }}>
+          <a href="/" className={pixelFont.className} style={{
+            fontSize: 9,
+            background: "rgba(0,0,0,0.7)",
+            border: "2px solid #00e3fd",
+            color: "#00e3fd",
+            padding: "10px 16px",
+            cursor: "pointer",
+            letterSpacing: "0.1em",
+            textDecoration: "none",
+            display: "inline-block",
+            boxShadow: "0 0 12px rgba(0,227,253,0.2)",
+          }}>
+            PLAY
+          </a>
+        </div>
+      )}
 
       {/* Scrollable content */}
       <div style={{ position: "relative", zIndex: 10, maxWidth: 900, margin: "0 auto", padding: "64px 28px 96px" }}>

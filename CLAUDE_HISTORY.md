@@ -1416,6 +1416,54 @@ ALTER TABLE group_members ADD COLUMN IF NOT EXISTS joined_at TIMESTAMPTZ NOT NUL
 
 ---
 
+## Session 47 — 2026-04-07 (Session 28 — multiplayer stability)
+
+### What was done
+
+**Enemy spawning overhaul:**
+- `ENEMY_SPAWN_RADIUS` 2→3 (25→49 stref), spawn chance 80% pustych→45%, `MAX_ALIVE_ENEMIES` 40→60, `ENEMY_CHASE_RANGE` 500→800px
+- Wander animation fix: `idle_down` → `walk_${dir}` (wrogowie nie wyglądali na zamrożonych)
+- Enemy zone respawn: `spawnedZones.delete(key)` po 30s od śmierci wroga (`ENEMY_ZONE_RESPAWN_MS = 30_000`), nowe pole `zoneRespawnQueue: Map<string, number>`
+- `spawnSingleEnemy` — reuse dead enemy slot (reset hp/pos/animKey/statusEffects) zamiast pomijania gdy `has(id)`, fix kolizji ID przy respawnie
+- `scheduleZoneRespawn(ex, ey)` + `processZoneRespawns(now)` wywoływane w masterTick
+
+**Multiplayer stability (root causes odkryte i naprawione):**
+- **Główna przyczyna 4002:** `zone_enter` wysyłany przez klienta bez zarejestrowanego handlera na serwerze → Colyseus rozłącza z `CloseCode.WITH_ERROR` w trybie produkcyjnym. Fix: `this.onMessage("zone_enter", ...)` dodany
+- **Catch-all `"*"` handler:** każdy nieznany typ wiadomości logowany jako warning zamiast rozłączania gracza — zapobiega podobnym błędom w przyszłości
+- **`masterTick` try/catch:** wyjątki w tick loop nie crashują pokoju, logowane jako `[masterTick] CRASH:`
+- **`statusEffects.clear()`:** `MapSchema` nie ma `.clear()` — zamienione na collect-then-delete pattern
+- **`onLeave` overlay w PlayScene:** `room.onLeave(code)` → overlay "ROZŁĄCZONO OD SERWERA" z przyciskiem Odśwież; `clearRoom()` czyści moduł-level ref
+- **`process.on('uncaughtException'/'unhandledRejection')`** w `server/src/index.ts` — logi diagnostyczne
+
+**Nietykalność gracza (pełny zakres):**
+- `deadPlayers` Set blokuje damage od momentu śmierci (overlay) do respawnu
+- `respawnInvincibleUntil: Map<string, number>` — 3s nietykalności po respawnie (serwer + klient: blink sprite + "NIETYKALNY" indicator)
+- `afkPlayers: Set<string>` — damage zablokowany gdy tab w tle (`visibilitychange`) lub wyjście z `/game` (scene DESTROY event); `"💤 AFK — OCHRONA AKTYWNA"` na ekranie
+- Death overlay countdown timer fix: `if (!this.deathOverlay) return` przed `setText` — koniec `drawImage null` crashów; `deathCountdownTimer` anulowany w `_hideDeathOverlay`
+
+**Devlog:**
+- SIGN IN button na `/devlog` (Clerk `SignInButton` w prawym górnym rogu, zmienia się w PLAY po zalogowaniu)
+
+### Decisions made
+- Catch-all `"*"` handler jako stały element architektury — każdy nowy typ wiadomości klienta który nie ma handlera nie może rozłączać gracza
+- AFK ochrona po stronie serwera (nie klienta) — klient może kłamać, ale serwer decyduje o damage
+- Zone respawn przez `zoneRespawnQueue` (nie przez `setInterval`) — deterministyczny, brak race conditions
+
+### Problems encountered
+- `zone_enter` bez handlera był ukrytą przyczyną wszystkich 4002 disconnectów od Sessions 27+
+- Colyseus `isDevMode = false` domyślnie → `WITH_ERROR` zamiast logu nawet w `npm run dev`
+- `MapSchema.forEach + delete` podczas iteracji — safe pattern: collect keys first
+
+### Next step
+**Wieczór 48** — Security audit (zaplanowany wcześniej):
+- Server-side validation (distance checks, stat caps, inventory limits)
+- Supabase RLS policies
+- API route validation (Zod schemas, auth check na każdej trasie)
+
+**TODO przed produkcją:** `VOTE_THRESHOLD=1` → `3` w `src/app/api/forge/vote/route.ts:13`
+
+---
+
 ## REMINDER: Update this file before ending every session
 Run this prompt when finishing work:
 "Update CLAUDE_HISTORY.md with what we did today, decisions made,

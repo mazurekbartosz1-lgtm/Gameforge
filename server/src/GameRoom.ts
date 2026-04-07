@@ -130,14 +130,15 @@ const NEW_PLAYER_PROTECTION_DMG_MULT = 0.5;
 const TILE_PX             = 16;   // pixels per tile (mirrors client TILE_SIZE)
 const ENEMY_ZONE_TILES    = 16;   // tiles per enemy spawn zone side (256 px)
 const ENEMY_ZONE_PX       = TILE_PX * ENEMY_ZONE_TILES; // 256 px per zone
-const ENEMY_SPAWN_RADIUS  = 2;    // zones to activate around player (5×5 = 25 zones)
+const ENEMY_SPAWN_RADIUS  = 3;    // zones to activate around player (7×7 = 49 zones)
 const ENEMY_SPAWN_CLEAR   = 2;    // zone radius around origin kept empty
-const MAX_ALIVE_ENEMIES   = 40;   // soft cap on alive enemy count
+const MAX_ALIVE_ENEMIES   = 60;   // soft cap on alive enemy count
+const ENEMY_ZONE_RESPAWN_MS = 30_000; // ms after last kill before zone can respawn
 
 const ENEMY_HP             = 30;
 const ENEMY_SPEED          = 100;  // px/s — same as player
 const ENEMY_MOVE_RATE      = 100;  // ms between movement ticks
-const ENEMY_CHASE_RANGE    = 500;  // px — distance to start chasing
+const ENEMY_CHASE_RANGE    = 800;  // px — distance to start chasing
 const PLAYER_ENEMY_SEP_PX  = 52;   // px — enemies blocked outside this radius around player
 const ENEMY_STOP_DIST      = 54;   // px — AI stops enemy here (slightly above SEP so it fires)
 const ENEMY_MELEE_RANGE    = 54;   // px — pierce + damage triggers here (= STOP_DIST)
@@ -234,6 +235,10 @@ export class GameRoom extends Room<GameRoomOptions> {
 
   /** Players whose death event has already been fired this session. */
   private deadPlayers = new Set<string>();
+  /** sessionId → timestamp (ms) until which the player is invincible after respawn */
+  private respawnInvincibleUntil = new Map<string, number>();
+  /** Players currently marked as AFK (tab hidden or left /game) */
+  private afkPlayers = new Set<string>();
 
   /** Maps sessionId → player UUID in DB (needed for room state save). */
   private playerDbIds = new Map<string, string>();
@@ -248,6 +253,8 @@ export class GameRoom extends Room<GameRoomOptions> {
   private enemyVelocities = new Map<string, { vx: number; vy: number }>();
   /** Tracks which enemy spawn zones have already been activated. */
   private spawnedZones = new Set<string>();
+  /** Zones scheduled for reset (respawn): key → timestamp when to clear */
+  private zoneRespawnQueue = new Map<string, number>();
   /** Accumulated ms since last full game tick (hunger, AI decision, etc.). */
   private gameTickAccum = 0;
 
@@ -658,6 +665,8 @@ export class GameRoom extends Room<GameRoomOptions> {
     this.pendingTakeovers.delete(client.sessionId);
     this.hungerLowThrottle.delete(client.sessionId);
     this.playerJoinedGroupAt.delete(client.sessionId);
+    this.respawnInvincibleUntil.delete(client.sessionId);
+    this.afkPlayers.delete(client.sessionId);
     const player = this.state.players.get(client.sessionId);
     if (player) {
       await this._savePlayerState(player);
@@ -708,21 +717,26 @@ export class GameRoom extends Room<GameRoomOptions> {
   // ─── Tick ──────────────────────────────────────────────────────────────────
 
   protected masterTick(dt: number) {
-    // Enemy movement + separation every call (100ms)
-    this.tickEnemyMovement();
-    this.separateEnemies();
+    try {
+      // Enemy movement + separation every call (100ms)
+      this.tickEnemyMovement();
+      this.separateEnemies();
 
-    // Full game logic every TICK_RATE ms
-    this.gameTickAccum += dt;
-    if (this.gameTickAccum >= TICK_RATE) {
-      this.gameTickAccum -= TICK_RATE;
-      const now = Date.now();
-      this.updateWorldTime(now);
-      this.drainHungerAndSanity();
-      this.tickRuleEngine();
-      this.sendStatsToPlayers();
-      this.respawnNodes(now);
-      this.tickEnemyAI();
+      // Full game logic every TICK_RATE ms
+      this.gameTickAccum += dt;
+      if (this.gameTickAccum >= TICK_RATE) {
+        this.gameTickAccum -= TICK_RATE;
+        const now = Date.now();
+        this.updateWorldTime(now);
+        this.drainHungerAndSanity();
+        this.tickRuleEngine();
+        this.sendStatsToPlayers();
+        this.respawnNodes(now);
+        this.processZoneRespawns(now);
+        this.tickEnemyAI();
+      }
+    } catch (err) {
+      console.error("[masterTick] CRASH:", err);
     }
   }
 
@@ -1091,11 +1105,12 @@ export class GameRoom extends Room<GameRoomOptions> {
       player.x = respawnX;
       player.y = respawnY;
       this.deadPlayers.delete(player.sessionId);
+      this.respawnInvincibleUntil.set(player.sessionId, Date.now() + 3_000);
       client.send("player_respawn", { x: respawnX, y: respawnY, hp: player.hp });
       client.send("inventory_load", Array.from(player.inventory));
       this.sendStatsToPlayers();
       this._savePlayerState(player).catch(() => {});
-      console.log(`[GameRoom] ${player.nickname} respawned at bonfire (${respawnX}, ${respawnY})`);
+      console.log(`[GameRoom] ${player.nickname} respawned (3s invincibility)`);
     }, 3_000);
   }
 
@@ -1189,10 +1204,10 @@ export class GameRoom extends Room<GameRoomOptions> {
 
     const h = this.hashZone(zx, zy);
     let count: number;
-    if      (h < 0.80) return;         // 80% — empty zone
-    else if (h < 0.93) count = 1;      // 13% — lone hunter
-    else if (h < 0.98) count = 2;      // 5%  — pair
-    else               count = 3;      // 2%  — trio (no large packs)
+    if      (h < 0.45) return;         // 45% — empty zone
+    else if (h < 0.80) count = 1;      // 35% — lone hunter
+    else if (h < 0.95) count = 2;      // 15% — pair
+    else               count = 3;      // 5%  — trio
 
     let alive = 0;
     this.state.enemies.forEach((e: EnemyState) => { if (e.isAlive) alive++; });
@@ -1215,6 +1230,24 @@ export class GameRoom extends Room<GameRoomOptions> {
     }
   }
 
+  /** Schedule a zone to be cleared from spawnedZones after ENEMY_ZONE_RESPAWN_MS. */
+  private scheduleZoneRespawn(ex: number, ey: number) {
+    const zx = Math.floor(ex / ENEMY_ZONE_PX);
+    const zy = Math.floor(ey / ENEMY_ZONE_PX);
+    const key = `${zx},${zy}`;
+    this.zoneRespawnQueue.set(key, Date.now() + ENEMY_ZONE_RESPAWN_MS);
+  }
+
+  /** Process zone respawn queue — call from tick loop. */
+  private processZoneRespawns(now: number) {
+    for (const [key, at] of this.zoneRespawnQueue) {
+      if (now >= at) {
+        this.spawnedZones.delete(key);
+        this.zoneRespawnQueue.delete(key);
+      }
+    }
+  }
+
   /** Returns a configId from the zone-appropriate pool. */
   private _getEnemyConfigForPosition(x: number, y: number): string {
     const zone = this.getDistanceZone(x, y);
@@ -1229,18 +1262,38 @@ export class GameRoom extends Room<GameRoomOptions> {
   }
 
   private spawnSingleEnemy(id: string, x: number, y: number, configId = "hunter") {
-    if (this.state.enemies.has(id)) return;
     const config = MONSTER_CONFIG[configId] ?? MONSTER_CONFIG["hunter"];
     const zone = this.getDistanceZone(x, y);
     const mult = this.getDifficultyMultiplier(zone);
+    const hp = Math.round(config.hp * mult);
+
+    // Reuse dead enemy slot with same ID (zone respawn), otherwise create new
+    const existing = this.state.enemies.get(id);
+    if (existing) {
+      if (existing.isAlive) return; // already alive, skip
+      existing.configId = config.id;
+      existing.x        = x;
+      existing.y        = y;
+      existing.hp       = hp;
+      existing.maxHp    = hp;
+      existing.isAlive  = true;
+      existing.animKey  = "idle_down";
+      const seKeys: string[] = [];
+      existing.statusEffects.forEach((_: number, k: string) => seKeys.push(k));
+      seKeys.forEach(k => existing.statusEffects.delete(k));
+      this.enemyVelocities.set(id, { vx: 0, vy: 0 });
+      this.broadcast("enemy_update", { id, x, y, animKey: "idle_down", configId: config.id, hp, maxHp: hp });
+      return;
+    }
+
     const enemy = new EnemyState();
     enemy.id       = id;
     enemy.type     = "hunter";
     enemy.configId = config.id;
     enemy.x        = x;
     enemy.y        = y;
-    enemy.hp       = Math.round(config.hp * mult);
-    enemy.maxHp    = Math.round(config.maxHp * mult);
+    enemy.hp       = hp;
+    enemy.maxHp    = hp;
     enemy.isAlive  = true;
     enemy.animKey  = "idle_down";
     this.state.enemies.set(id, enemy);
@@ -1281,6 +1334,7 @@ export class GameRoom extends Room<GameRoomOptions> {
           enemy.isAlive = false;
           enemy.hp = 0;
           this.broadcast("enemy_dead", { id: enemy.id, x: enemy.x, y: enemy.y });
+          this.scheduleZoneRespawn(enemy.x, enemy.y);
         }
       }
     });
@@ -1313,6 +1367,10 @@ export class GameRoom extends Room<GameRoomOptions> {
           enemy.animKey = `pierce_${dir}`;
           const attackedPlayer = this.state.players.get(nearest.sessionId);
           if (attackedPlayer) {
+            // Dead (overlay shown) / post-respawn invincibility / AFK — no damage
+            if (this.deadPlayers.has(nearest.sessionId)) return;
+            if ((this.respawnInvincibleUntil.get(nearest.sessionId) ?? 0) > Date.now()) return;
+            if (this.afkPlayers.has(nearest.sessionId)) return;
             const prevHp = attackedPlayer.hp;
             const config = MONSTER_CONFIG[enemy.configId] ?? MONSTER_CONFIG["hunter"];
             // Apply new-player protection: halve damage if protected
@@ -1339,10 +1397,9 @@ export class GameRoom extends Room<GameRoomOptions> {
       } else {
         // ── Wander ────────────────────────────────────────────────────────────
         const angle = Math.random() * Math.PI * 2;
-        const wanderSpeed = moveSpeed * 0.3;
+        const wanderSpeed = moveSpeed * 0.4;
         this.enemyVelocities.set(enemy.id, { vx: Math.cos(angle) * wanderSpeed, vy: Math.sin(angle) * wanderSpeed });
-        if (enemy.animKey.startsWith("walk") || enemy.animKey.startsWith("pierce"))
-          enemy.animKey = `idle_${dir}`;
+        enemy.animKey = `walk_${dir}`;
       }
     });
   }
@@ -1493,6 +1550,14 @@ export class GameRoom extends Room<GameRoomOptions> {
   // ─── Message Handlers ─────────────────────────────────────────────────────
 
   protected registerMessageHandlers() {
+    // Catch-all: unknown message types are logged and ignored instead of disconnecting the client.
+    // Without this, Colyseus closes the connection with 4002 (WITH_ERROR) in production mode
+    // whenever the client sends a message type the server hasn't registered — e.g. a new client
+    // feature added before its server handler is wired up.
+    this.onMessage("*", (_client, type, _data) => {
+      console.warn(`[GameRoom] unhandled message type: "${type}" — ignored (no disconnect)`);
+    });
+
     this.onMessage("confirm_takeover", async (client) => {
       const pending = this.pendingTakeovers.get(client.sessionId);
       if (!pending) return;
@@ -1646,6 +1711,13 @@ export class GameRoom extends Room<GameRoomOptions> {
       for (let dy = -ENEMY_SPAWN_RADIUS; dy <= ENEMY_SPAWN_RADIUS; dy++)
         for (let dx = -ENEMY_SPAWN_RADIUS; dx <= ENEMY_SPAWN_RADIUS; dx++)
           this.activateZone(data.chunkX + dx, data.chunkY + dy);
+    });
+
+    this.onMessage("zone_enter", (_client, _data: { zone: number }) => { /* acknowledged */ });
+
+    this.onMessage("afk", (client, data: { isAfk: boolean }) => {
+      if (data.isAfk) this.afkPlayers.add(client.sessionId);
+      else            this.afkPlayers.delete(client.sessionId);
     });
 
     this.onMessage("action", (client, data: { type: string; x: number; y: number }) => {
@@ -1849,6 +1921,7 @@ export class GameRoom extends Room<GameRoomOptions> {
         enemy.isAlive = false;
         enemy.hp = 0;
         this.broadcast("enemy_dead", { id: enemy.id, x: enemy.x, y: enemy.y });
+        this.scheduleZoneRespawn(enemy.x, enemy.y);
         // Roll loot drop
         const dropId = rollDrop(enemy.type);
         if (dropId) {

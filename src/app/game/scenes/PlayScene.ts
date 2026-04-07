@@ -177,6 +177,10 @@ export class PlayScene extends Scene {
   // Difficulty / death / zone
   private isDead = false;
   private deathOverlay: Phaser.GameObjects.Container | null = null;
+  private deathCountdownTimer: Phaser.Time.TimerEvent | null = null;
+  private invincibleUntil = 0; // timestamp ms — player ignores damage until this time
+  private afkIndicator: Phaser.GameObjects.Text | null = null;
+  private _afkVisibilityHandler: (() => void) | null = null;
   private currentZone: 0 | 1 | 2 | 3 = 0;
   private lastZoneToastZone = -1;
   private zoneBoundaries: [number, number, number] = [500, 1500, 3000];
@@ -302,8 +306,10 @@ export class PlayScene extends Scene {
     this.invUI = new InventoryUI(this, this.inventory, this.room);
 
     // ── Multiplayer handlers ────────────────────────────────────────────────
-    if (this.room) this.setupMessageHandlers(this.room);
-    else {
+    if (this.room) {
+      this.setupMessageHandlers(this.room);
+      this._setupAfkDetection(this.room);
+    } else {
       // offline/solo: no dead-resource list to wait for
       this.generateTreeChunksAround(0, 0);
       this.generateRockChunksAround(0, 0); // offline: generate immediately (no dead state)
@@ -460,6 +466,19 @@ export class PlayScene extends Scene {
   }
 
   private setupMessageHandlers(room: Room) {
+    room.onLeave((code) => {
+      import("../network/ColyseusClient").then(({ clearRoom }) => clearRoom());
+      const cx = this.cameras.main.width / 2;
+      const cy = this.cameras.main.height / 2;
+      this.add.rectangle(cx, cy, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.85).setDepth(2000).setScrollFactor(0);
+      const box = this.add.rectangle(cx, cy, 460, 200, 0x0d0d1a).setDepth(2001).setScrollFactor(0);
+      box.setStrokeStyle(1, 0xff4444);
+      this.add.text(cx, cy - 60, "ROZŁĄCZONO OD SERWERA", { fontFamily: "Courier New", fontSize: "11px", color: "#ff4444", letterSpacing: 3 }).setOrigin(0.5).setDepth(2002).setScrollFactor(0);
+      this.add.text(cx, cy - 25, `Połączenie zostało przerwane (kod: ${code}).\nOdśwież stronę, aby ponownie się połączyć.`, { fontFamily: "Courier New", fontSize: "12px", color: "#a9a9c2", align: "center", lineSpacing: 6 }).setOrigin(0.5).setDepth(2002).setScrollFactor(0);
+      const btn = this.add.text(cx, cy + 55, "[ ODŚWIEŻ ]", { fontFamily: "Courier New", fontSize: "13px", color: "#00e3fd" }).setOrigin(0.5).setDepth(2002).setScrollFactor(0).setInteractive({ useHandCursor: true });
+      btn.on("pointerup", () => window.location.reload());
+    });
+
     room.onMessage("session_taken_over", () => {
       // Another tab/browser took over this session — freeze the game and show overlay
       this.physics?.pause();
@@ -664,6 +683,16 @@ export class PlayScene extends Scene {
       this.py = data.y;
       this.sprites.forEach((s) => { s.x = this.px; s.y = this.py; });
       this.showPickupText(this.px, this.py - 50, "Odrodzono przy ognisku", "#4ade80");
+
+      // 3-second post-respawn invincibility
+      const INVINCIBILITY_MS = 3000;
+      this.invincibleUntil = Date.now() + INVINCIBILITY_MS;
+      this._showInvincibilityIndicator(INVINCIBILITY_MS);
+      // Blink player sprites during invincibility window
+      this.sprites.forEach((s) => {
+        this.tweens.add({ targets: s, alpha: 0.3, duration: 150, yoyo: true, repeat: 9,
+          onComplete: () => { if (s.active) s.setAlpha(1); } });
+      });
     });
 
     room.onMessage("difficulty_increase", (data: { level: number; name: string; color: string }) => {
@@ -1566,18 +1595,82 @@ export class PlayScene extends Scene {
     this.deathOverlay = this.add.container(0, 0, [bg, skull, msg, countdown]).setDepth(200);
 
     let count = 3;
-    const timer = this.time.addEvent({
+    this.deathCountdownTimer = this.time.addEvent({
       delay: 1000,
       repeat: 2,
       callback: () => {
+        if (!this.deathOverlay) return; // overlay already destroyed — stop silently
         count--;
         if (count > 0) countdown.setText(`Odrodzenie za ${count}...`);
-        else { countdown.setText("Odrodzono!"); timer.destroy(); }
+        else countdown.setText("Odrodzono!");
       },
     });
   }
 
+  private _setupAfkDetection(room: Room): void {
+    const sendAfk = (isAfk: boolean) => {
+      try { room.send("afk", { isAfk }); } catch { /* room may be closed */ }
+    };
+
+    this._afkVisibilityHandler = () => {
+      const hidden = document.hidden;
+      sendAfk(hidden);
+      if (hidden) {
+        if (!this.afkIndicator) {
+          const cx = this.cameras.main.width / 2;
+          this.afkIndicator = this.add.text(cx, 32, "💤 AFK — OCHRONA AKTYWNA", {
+            fontSize: "9px", color: "#facc15",
+            fontFamily: "var(--font-pixel), 'Press Start 2P', monospace",
+            backgroundColor: "rgba(0,0,0,0.7)",
+            padding: { x: 8, y: 4 },
+          }).setOrigin(0.5).setScrollFactor(0).setDepth(190);
+        }
+      } else {
+        if (this.afkIndicator) { this.afkIndicator.destroy(); this.afkIndicator = null; }
+      }
+    };
+
+    document.addEventListener("visibilitychange", this._afkVisibilityHandler);
+
+    // Clean up listener when scene shuts down and notify server
+    this.events.once(Phaser.Core.Events.DESTROY, () => {
+      if (this._afkVisibilityHandler) {
+        document.removeEventListener("visibilitychange", this._afkVisibilityHandler);
+        this._afkVisibilityHandler = null;
+      }
+      sendAfk(true); // leaving /game = AFK
+    });
+  }
+
+  private _showInvincibilityIndicator(durationMs: number): void {
+    const cx = this.cameras.main.width / 2;
+    const shield = this.add.text(cx, 32, "🛡 NIETYKALNY", {
+      fontSize: "9px", color: "#4ade80",
+      fontFamily: "var(--font-pixel), 'Press Start 2P', monospace",
+      backgroundColor: "rgba(0,0,0,0.6)",
+      padding: { x: 8, y: 4 },
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(190).setAlpha(1);
+
+    // Blink in last second, then destroy
+    this.time.delayedCall(durationMs - 1000, () => {
+      if (!shield.active) return;
+      this.tweens.add({
+        targets: shield,
+        alpha: 0,
+        duration: 200,
+        yoyo: true,
+        repeat: 4,
+        onComplete: () => { if (shield.active) shield.destroy(); },
+      });
+    });
+    this.time.delayedCall(durationMs, () => { if (shield.active) shield.destroy(); });
+  }
+
   private _hideDeathOverlay(): void {
+    if (this.deathCountdownTimer) {
+      this.deathCountdownTimer.destroy();
+      this.deathCountdownTimer = null;
+    }
     if (!this.deathOverlay) return;
     this.deathOverlay.destroy();
     this.deathOverlay = null;
