@@ -2,13 +2,21 @@
 
 > A collaborative multiplayer browser survival game & Claude-powered AI natural-language modding studio built with safety-by-design for young creators (ages 10–14).
 
+**Live App & Devlog:** [gameforge-beta.vercel.app/devlog](https://gameforge-beta.vercel.app/devlog)
+
 ![Gameforge — Multiplayer Survival & AI Modding](./banner.jpg)
 
 ---
 
 ## Overview
 
-**Gameforge** combines a *Don't Starve*-inspired multiplayer pixel-art survival game with an AI-assisted modding loop designed specifically for kids aged 10–14 (Polish UI). Players explore, craft, and survive together in private group rooms, then fork the world onto a personal branch to invent new items, monsters, and rules using natural language or voice — with automated child-safety filtering and 7-day group voting before mods go live.
+**Gameforge** combines a *Don't Starve*-inspired multiplayer pixel-art survival game with an AI-assisted modding loop designed specifically for kids aged 10–14. Players explore, craft, and survive together in private group rooms, then fork the world onto a personal branch to invent new items, monsters, and rules using natural language or voice — with automated child-safety filtering and 7-day group voting before mods go live (`FORK → DESCRIBE → ITERATE → SUBMIT → VOTE → LIVE`).
+
+---
+
+## Live Preview
+
+![Gameforge — Live Devlog & Project Progress](./preview.png)
 
 ---
 
